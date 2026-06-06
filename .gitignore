@@ -1,0 +1,45 @@
+# Build output
+bin/
+obj/
+artifacts/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local Codex / assistant state
+.claude/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.cache
+
+# Publish packages
+*.nupkg
+*.snupkg
+
+# LabelForge local runtime/model data
+/models/
+*.onnx
+*.onnx.data
+
+# User datasets and exports should be added intentionally, not by accident.
+datasets/
+exports/

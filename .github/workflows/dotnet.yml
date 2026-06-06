@@ -1,0 +1,29 @@
+name: .NET
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore LabelForge.slnx
+
+      - name: Build
+        run: dotnet build LabelForge.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test LabelForge.slnx --configuration Release --no-build --verbosity normal

@@ -1,0 +1,87 @@
+<UserControl x:Class="LabelForge.App.Controls.ImageMetadataPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource PanelBgBrush}">
+
+    <DockPanel>
+        <!-- Header -->
+        <Border DockPanel.Dock="Top"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="10,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="IMAGE INFO"
+                           FontSize="10"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           VerticalAlignment="Center"/>
+                <Button Grid.Column="1"
+                        x:Name="ClearAllButton"
+                        Style="{StaticResource GhostButtonStyle}"
+                        Padding="6,2"
+                        FontSize="10"
+                        Content="Törlés"
+                        ToolTip="Összes attribútum törlése"
+                        Click="ClearAllOnClick"/>
+            </Grid>
+        </Border>
+
+        <!-- Scrollable attribute area -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel x:Name="RootPanel" Margin="0,4,0,8">
+
+                <!-- Predefined attribute rows are generated in code-behind here -->
+
+                <!-- Custom tags section -->
+                <Border Margin="8,8,8,2"
+                        BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="0,6,0,0">
+                    <TextBlock Text="EGYÉNI TAGEK"
+                               FontSize="9"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextMutedBrush}"/>
+                </Border>
+
+                <!-- Add custom tag row -->
+                <Grid Margin="8,4,8,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="4"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="4"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="CustomKeyBox"
+                             Grid.Column="0"
+                             Padding="5,3"
+                             FontSize="11"
+                             ToolTip="Kulcs (pl. felbontás)"
+                             KeyDown="CustomTagBoxOnKeyDown"/>
+                    <TextBox x:Name="CustomValueBox"
+                             Grid.Column="2"
+                             Padding="5,3"
+                             FontSize="11"
+                             ToolTip="Érték (pl. 1080p)"
+                             KeyDown="CustomTagBoxOnKeyDown"/>
+                    <Button Grid.Column="4"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Padding="8,3"
+                            FontSize="12"
+                            Content="+"
+                            ToolTip="Tag hozzáadása"
+                            Click="AddCustomTagOnClick"/>
+                </Grid>
+
+                <!-- Custom tags list -->
+                <StackPanel x:Name="CustomTagsPanel" Margin="8,2,8,0"/>
+
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</UserControl>

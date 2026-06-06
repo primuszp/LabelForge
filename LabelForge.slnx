@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LabelForge.App/LabelForge.App.csproj" />
+    <Project Path="src/LabelForge.Core/LabelForge.Core.csproj" />
+    <Project Path="src/LabelForge.ImageControl/LabelForge.ImageControl.csproj" />
+    <Project Path="src/LabelForge.Persistence/LabelForge.Persistence.csproj" />
+    <Project Path="src/LabelForge.Tools/LabelForge.Tools.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LabelForge.Core.Tests/LabelForge.Core.Tests.csproj" />
+    <Project Path="tests/LabelForge.Persistence.Tests/LabelForge.Persistence.Tests.csproj" />
+  </Folder>
+</Solution>

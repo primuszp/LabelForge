@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27130.2036
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Primusz.Demo", "Primusz.Demo\Primusz.Demo.csproj", "{D59A2A3F-DFAC-49FF-BD69-7D76680219FC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Primusz.ZoomPanel", "Primusz.ZoomPanel\Primusz.ZoomPanel.csproj", "{35A8FEFF-A63F-4939-B78E-88E86237D5B7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Primusz.DrawTools", "Primusz.DrawTools\Primusz.DrawTools.csproj", "{B5A227B9-C316-4B95-8C59-3FC7829B2AC0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D59A2A3F-DFAC-49FF-BD69-7D76680219FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D59A2A3F-DFAC-49FF-BD69-7D76680219FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D59A2A3F-DFAC-49FF-BD69-7D76680219FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D59A2A3F-DFAC-49FF-BD69-7D76680219FC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{35A8FEFF-A63F-4939-B78E-88E86237D5B7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{35A8FEFF-A63F-4939-B78E-88E86237D5B7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35A8FEFF-A63F-4939-B78E-88E86237D5B7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{35A8FEFF-A63F-4939-B78E-88E86237D5B7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B5A227B9-C316-4B95-8C59-3FC7829B2AC0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B5A227B9-C316-4B95-8C59-3FC7829B2AC0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B5A227B9-C316-4B95-8C59-3FC7829B2AC0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B5A227B9-C316-4B95-8C59-3FC7829B2AC0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3148358D-201E-4378-BE18-2CB4F91A1DA3}
+	EndGlobalSection
+EndGlobal

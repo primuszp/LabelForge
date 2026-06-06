@@ -1,0 +1,28 @@
+<UserControl x:Class="LabelForge.App.Controls.MiniMapOverlay"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Width="160" Height="100"
+             Opacity="0.85"
+             Cursor="Hand">
+
+    <Border CornerRadius="4"
+            BorderBrush="#555"
+            BorderThickness="1"
+            Background="#1a1a1a"
+            ClipToBounds="True">
+        <Grid>
+            <!-- Thumbnail image -->
+            <Image x:Name="ThumbImage"
+                   Stretch="Uniform"
+                   RenderOptions.BitmapScalingMode="LowQuality"/>
+
+            <!-- Viewport indicator rectangle -->
+            <Canvas x:Name="ViewCanvas" ClipToBounds="True">
+                <Rectangle x:Name="ViewRect"
+                           Stroke="#79C0FF"
+                           StrokeThickness="1.5"
+                           Fill="#2079C0FF"/>
+            </Canvas>
+        </Grid>
+    </Border>
+</UserControl>

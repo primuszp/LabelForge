@@ -1,0 +1,156 @@
+<Window x:Class="LabelForge.App.Dialogs.SamSetupDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SAM2.1 Beállítás"
+        Width="500" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource PanelBgBrush}"
+        Foreground="{StaticResource TextPrimaryBrush}"
+        FontFamily="Segoe UI" FontSize="12">
+
+    <StackPanel Margin="20,18,20,20">
+
+        <!-- Info box -->
+        <Border Background="{StaticResource SurfaceBgBrush}"
+                BorderBrush="{StaticResource AccentBlueMutedBrush}"
+                BorderThickness="1" CornerRadius="4"
+                Padding="12,10" Margin="0,0,0,18">
+            <StackPanel>
+                <TextBlock Text="SAM2.1 / SAM3 – szükséges fájlok:"
+                           FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <TextBlock TextWrapping="Wrap" FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}">
+                    <Run Text="• Image Encoder"/>
+                    <Run Text=" – képet kódol, egyszer fut képenként&#x0a;"/>
+                    <Run Text="• Decoder"/>
+                    <Run Text=" – kattintásból maszkot generál&#x0a;"/>
+                    <Run Text="• Text Encoder"/>
+                    <Run Text=" (opcionális, SAM3) – szöveges prompt támogatás&#x0a;&#x0a;"/>
+                    <Run Text="SAM2.1 letöltés:  " FontWeight="SemiBold"/>
+                    <Run Text="huggingface.co/Xenova/sam2-hiera-tiny" FontFamily="Consolas"
+                         Foreground="{StaticResource AccentBlueBrush}"/>
+                    <Run Text="&#x0a;SAM3 export:  " FontWeight="SemiBold"/>
+                    <Run Text="github.com/facebookresearch/sam3 → export_onnx.py" FontFamily="Consolas"
+                         Foreground="{StaticResource AccentBlueBrush}"/>
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <!-- Preset download -->
+        <TextBlock Text="PRESET LETÖLTÉS" FontSize="10" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,6"/>
+        <Border Background="{StaticResource SurfaceBgBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1" CornerRadius="4"
+                Padding="12,10" Margin="0,0,0,16">
+            <StackPanel>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="SamPresetCombo"
+                              DisplayMemberPath="DisplayName"
+                              SelectionChanged="SamPresetComboOnSelectionChanged"/>
+                    <Button Grid.Column="2" x:Name="SamDownloadBtn"
+                            Content="Letölt" Padding="12,5"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="SamDownloadOnClick"/>
+                </Grid>
+                <TextBlock x:Name="SamPresetDesc"
+                           FontSize="11" TextWrapping="Wrap"
+                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                <ProgressBar x:Name="SamProgress" Height="4" Margin="0,6,0,0"
+                             Visibility="Collapsed"/>
+                <TextBlock x:Name="SamProgressText" FontSize="10"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Margin="0,4,0,0" Visibility="Collapsed"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Encoder path -->
+        <TextBlock Text="ENCODER FÁJL (image_encoder.onnx)"
+                   FontSize="10" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+        <Grid Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="EncoderPathBox" Padding="6,5" IsReadOnly="True"
+                     Foreground="{StaticResource TextSecondaryBrush}"
+                     Text="Nincs kiválasztva…"/>
+            <Button Grid.Column="2" Content="Tallóz…"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Padding="10,5" Click="BrowseEncoderOnClick"/>
+        </Grid>
+
+        <!-- Decoder path -->
+        <TextBlock Text="DECODER FÁJL (image_decoder.onnx)"
+                   FontSize="10" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+        <Grid Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="DecoderPathBox" Padding="6,5" IsReadOnly="True"
+                     Foreground="{StaticResource TextSecondaryBrush}"
+                     Text="Nincs kiválasztva…"/>
+            <Button Grid.Column="2" Content="Tallóz…"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Padding="10,5" Click="BrowseDecoderOnClick"/>
+        </Grid>
+
+        <!-- Text encoder (SAM3 optional) -->
+        <TextBlock Text="TEXT ENCODER FÁJL (opcionális – csak SAM3)"
+                   FontSize="10" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
+        <Grid Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="TextEncoderPathBox" Padding="6,5" IsReadOnly="True"
+                     Foreground="{StaticResource TextSecondaryBrush}"
+                     Text="Nincs kiválasztva (szöveges prompt nélkül is működik)"/>
+            <Button Grid.Column="2" Content="Tallóz…"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Padding="10,5" Click="BrowseTextEncoderOnClick"/>
+        </Grid>
+
+        <!-- Buttons -->
+        <Border BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,1,0,0" Padding="0,14,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusText"
+                           FontSize="11" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           TextTrimming="CharacterEllipsis"/>
+                <Button Grid.Column="2"
+                        Content="Mentés"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Padding="14,6" IsDefault="True"
+                        Click="SaveOnClick"/>
+                <Button Grid.Column="4"
+                        Content="Mégse"
+                        Style="{StaticResource GhostButtonStyle}"
+                        Padding="14,6" IsCancel="True"
+                        Click="CancelOnClick"/>
+            </Grid>
+        </Border>
+
+    </StackPanel>
+</Window>

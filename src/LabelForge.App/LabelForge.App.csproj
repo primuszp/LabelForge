@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\LabelForge.Core\LabelForge.Core.csproj" />
+    <ProjectReference Include="..\LabelForge.Persistence\LabelForge.Persistence.csproj" />
+    <ProjectReference Include="..\LabelForge.ImageControl\LabelForge.ImageControl.csproj" />
+    <ProjectReference Include="..\LabelForge.Tools\LabelForge.Tools.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.21.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+</Project>

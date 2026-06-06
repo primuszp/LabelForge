@@ -1,0 +1,298 @@
+<Window x:Class="LabelForge.App.Dialogs.AutoLabelDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI Auto-Label"
+        Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="{StaticResource PanelBgBrush}"
+        Foreground="{StaticResource TextPrimaryBrush}"
+        FontFamily="Segoe UI" FontSize="12">
+
+    <Window.Resources>
+        <!-- Szakasz-fejléc stílus -->
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="FontSize"     Value="10"/>
+            <Setter Property="FontWeight"   Value="SemiBold"/>
+            <Setter Property="Foreground"   Value="{StaticResource TextMutedBrush}"/>
+            <Setter Property="Margin"       Value="0,0,0,6"/>
+        </Style>
+    </Window.Resources>
+
+    <StackPanel Margin="20,18,20,20">
+
+        <!-- ══ PRESET LETÖLTÉS ══════════════════════════════════════════════ -->
+        <Border BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="1" CornerRadius="5"
+                Background="{StaticResource SurfaceBgBrush}"
+                Padding="14,12" Margin="0,0,0,18">
+            <StackPanel>
+
+                <TextBlock Text="PRESET MODELL LETÖLTÉSE"
+                           Style="{StaticResource SectionLabel}"/>
+
+                <!-- Választó + gomb -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="PresetCombo"
+                              DisplayMemberPath="DisplayName"
+                              SelectionChanged="PresetComboOnSelectionChanged"/>
+                    <Button Grid.Column="2"
+                            x:Name="DownloadButton"
+                            Content="Letölt"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Padding="14,6"
+                            Click="DownloadOnClick"/>
+                </Grid>
+
+                <!-- Leírás sor -->
+                <TextBlock x:Name="PresetDescText"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="11"
+                           Margin="0,7,0,0"
+                           TextWrapping="Wrap"/>
+
+                <!-- Progress sáv -->
+                <ProgressBar x:Name="DownloadProgress"
+                             Margin="0,8,0,0"
+                             Visibility="Collapsed"/>
+
+                <TextBlock x:Name="DownloadStatusText"
+                           FontSize="10"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           Margin="0,4,0,0"
+                           Visibility="Collapsed"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ══ MODELL FÁJL ═══════════════════════════════════════════════════ -->
+        <TextBlock Text="LETOLTOTT MODELLEK" Style="{StaticResource SectionLabel}"/>
+        <ComboBox x:Name="DownloadedModelCombo"
+                  DisplayMemberPath="DisplayName"
+                  Margin="0,0,0,16"
+                  SelectionChanged="DownloadedModelComboOnSelectionChanged"/>
+
+        <TextBlock Text="MODELL FÁJL (.onnx)" Style="{StaticResource SectionLabel}"/>
+        <Grid Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="ModelPathBox"
+                     Padding="7,5"
+                     IsReadOnly="True"
+                     Foreground="{StaticResource TextSecondaryBrush}"
+                     Text="Nincs kiválasztva…"/>
+            <Button Grid.Column="2"
+                    Content="Tallóz…"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Padding="12,6"
+                    Click="BrowseModelOnClick"/>
+        </Grid>
+
+        <!-- ══ MODELL TÍPUS ══════════════════════════════════════════════════ -->
+        <TextBlock Text="MODELL TÍPUS" Style="{StaticResource SectionLabel}"/>
+        <Border Background="{StaticResource SurfaceBgBrush}"
+                CornerRadius="4" Padding="12,8" Margin="0,0,0,16">
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="DetectionRadio"
+                             Content="Detektálás  (bounding box)"
+                             IsChecked="True"
+                             Margin="0,0,24,0"/>
+                <RadioButton x:Name="SegmentationRadio"
+                             Content="Szegmentálás  (polygon maszk)"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ══ PARAMÉTEREK ═══════════════════════════════════════════════════ -->
+        <TextBlock Text="PARAMÉTEREK" Style="{StaticResource SectionLabel}"/>
+        <Border Background="{StaticResource SurfaceBgBrush}"
+                CornerRadius="4" Padding="12,10" Margin="0,0,0,16">
+            <StackPanel>
+
+                <!-- Conf + NMS egymás mellé -->
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="20"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <Grid Margin="0,0,0,4">
+                            <TextBlock Text="Bizonyosság küszöb"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock HorizontalAlignment="Right"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentBlueBrush}"
+                                       Text="{Binding ElementName=ConfSlider,
+                                              Path=Value, StringFormat={}{0:P0}}"/>
+                        </Grid>
+                        <Slider x:Name="ConfSlider"
+                                Minimum="0.05" Maximum="0.95" Value="0.50"
+                                TickFrequency="0.05" IsSnapToTickEnabled="True"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <Grid Margin="0,0,0,4">
+                            <TextBlock Text="NMS küszöb"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock HorizontalAlignment="Right"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentBlueBrush}"
+                                       Text="{Binding ElementName=NmsSlider,
+                                              Path=Value, StringFormat={}{0:P0}}"/>
+                        </Grid>
+                        <Slider x:Name="NmsSlider"
+                                Minimum="0.10" Maximum="0.90" Value="0.30"
+                                TickFrequency="0.05" IsSnapToTickEnabled="True"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Max detektálás -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="50"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Max detektálás / kép  (0 = korlátlan)"
+                                   FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Margin="0,0,0,4"/>
+                        <Slider x:Name="MaxDetSlider"
+                                Minimum="0" Maximum="50" Value="0"
+                                TickFrequency="1" IsSnapToTickEnabled="True"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBlueBrush}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text"
+                                        Value="{Binding ElementName=MaxDetSlider,
+                                               Path=Value, StringFormat={}{0:0}}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ElementName=MaxDetSlider,
+                                                           Path=Value}" Value="0">
+                                        <Setter Property="Text" Value="∞"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+
+                <Grid Margin="0,12,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="20"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <Grid Margin="0,0,0,4">
+                            <TextBlock Text="Maszk küszöb"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock HorizontalAlignment="Right"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentBlueBrush}"
+                                       Text="{Binding ElementName=MaskThresholdSlider,
+                                              Path=Value, StringFormat={}{0:P0}}"/>
+                        </Grid>
+                        <Slider x:Name="MaskThresholdSlider"
+                                Minimum="0.10" Maximum="0.90" Value="0.50"
+                                TickFrequency="0.05" IsSnapToTickEnabled="True"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <Grid Margin="0,0,0,4">
+                            <TextBlock Text="Polygon finomság"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                            <TextBlock HorizontalAlignment="Right"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentBlueBrush}"
+                                       Text="{Binding ElementName=PolygonEpsilonSlider,
+                                              Path=Value, StringFormat={}{0:0.0}}"/>
+                        </Grid>
+                        <Slider x:Name="PolygonEpsilonSlider"
+                                Minimum="0.5" Maximum="8.0" Value="2.0"
+                                TickFrequency="0.5" IsSnapToTickEnabled="True"/>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- ══ OSZTÁLYNEVEK ══════════════════════════════════════════════════ -->
+        <TextBlock Text="OSZTÁLYNEVEK  (soronként egy, index sorrendben)"
+                   Style="{StaticResource SectionLabel}"/>
+        <TextBox x:Name="ClassNamesBox"
+                 Height="96"
+                 AcceptsReturn="True"
+                 VerticalScrollBarVisibility="Auto"
+                 Padding="8,6"
+                 FontFamily="Consolas"
+                 FontSize="11"
+                 Margin="0,0,0,16"
+                 Text="person&#x0a;bicycle&#x0a;car&#x0a;motorcycle&#x0a;airplane&#x0a;bus&#x0a;train&#x0a;truck&#x0a;boat"/>
+
+        <!-- ══ FUTTATÁS HATÓKÖRE ══════════════════════════════════════════════ -->
+        <TextBlock Text="ALAPERTELMEZETT HATOKOR" Style="{StaticResource SectionLabel}"/>
+        <Border Background="{StaticResource SurfaceBgBrush}"
+                CornerRadius="4" Padding="12,8" Margin="0,0,0,20">
+            <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="CurrentImageRadio"
+                             Content="Jelenlegi kép"
+                             IsChecked="True"
+                             Margin="0,0,24,0"/>
+                <RadioButton x:Name="AllImagesRadio"
+                             Content="Teljes dataset mappa"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ══ AKCIÓGOMBOK ═══════════════════════════════════════════════════ -->
+        <Border BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="0,14,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StatusLabel"
+                           Foreground="{StaticResource TextMutedBrush}"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+                <Button Grid.Column="2"
+                        x:Name="RunButton"
+                        Content="Mentés"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Padding="18,7"
+                        IsDefault="True"
+                        Click="RunOnClick"/>
+                <Button Grid.Column="4"
+                        Content="Bezár"
+                        Style="{StaticResource GhostButtonStyle}"
+                        Padding="14,7"
+                        IsCancel="True"
+                        Click="CloseOnClick"/>
+            </Grid>
+        </Border>
+
+    </StackPanel>
+</Window>
