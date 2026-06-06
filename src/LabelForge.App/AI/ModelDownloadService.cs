@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using System.Net.Http.Headers;
 
@@ -68,4 +69,51 @@ public sealed class ModelDownloadService
         progress.Report((100, $"Kész: {model.FileName}"));
         return dest;
     }
+
+    public async Task<(string encoderPath, string decoderPath)> DownloadAndExtractSamPackageAsync(
+        PresetModel model,
+        IProgress<(int percent, string status)> progress,
+        CancellationToken ct = default)
+    {
+        if (model.Kind != YoloKind.SamPackage)
+            throw new ArgumentException("A kiválasztott preset nem SAM csomag.", nameof(model));
+
+        var zipPath = await DownloadAsync(model, progress, ct);
+        var extractDir = PresetModels.PackageFolder(model);
+        var tmpDir = extractDir + ".tmp";
+
+        progress.Report((100, $"Kicsomagolás: {model.FileName}"));
+
+        if (Directory.Exists(tmpDir))
+            Directory.Delete(tmpDir, recursive: true);
+        Directory.CreateDirectory(tmpDir);
+
+        try
+        {
+            ZipFile.ExtractToDirectory(zipPath, tmpDir, overwriteFiles: true);
+
+            if (Directory.Exists(extractDir))
+                Directory.Delete(extractDir, recursive: true);
+            Directory.Move(tmpDir, extractDir);
+        }
+        finally
+        {
+            if (Directory.Exists(tmpDir))
+                Directory.Delete(tmpDir, recursive: true);
+        }
+
+        var encoder = FindOnnx(extractDir, "encoder")
+            ?? throw new FileNotFoundException("A csomagban nem található encoder ONNX fájl.");
+        var decoder = FindOnnx(extractDir, "decoder")
+            ?? throw new FileNotFoundException("A csomagban nem található decoder ONNX fájl.");
+
+        progress.Report((100, $"Kész: {Path.GetFileName(encoder)} + {Path.GetFileName(decoder)}"));
+        return (encoder, decoder);
+    }
+
+    private static string? FindOnnx(string folder, string namePart) =>
+        Directory.EnumerateFiles(folder, "*.onnx", SearchOption.AllDirectories)
+            .OrderBy(path => path.Length)
+            .FirstOrDefault(path =>
+                Path.GetFileName(path).Contains(namePart, StringComparison.OrdinalIgnoreCase));
 }

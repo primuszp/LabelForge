@@ -349,6 +349,14 @@ public sealed class AnnotationCanvas : Canvas
 
         var point = ToPoint2D(e.GetPosition(this));
 
+        if (ActiveTool == AnnotationTool.Sam && e.ChangedButton == MouseButton.Right
+            && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            HandleSamClick(point, foreground: false);
+            e.Handled = true;
+            return;
+        }
+
         if (e.ChangedButton == MouseButton.Right)
         {
             if (isPolylineDrawing)
@@ -370,8 +378,11 @@ public sealed class AnnotationCanvas : Canvas
                 return;
             }
 
-            SelectAt(point, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
-            OpenContextMenu();
+            if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+            {
+                SelectAt(point, false);
+                OpenContextMenu();
+            }
             e.Handled = true;
             return;
         }

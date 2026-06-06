@@ -17,7 +17,7 @@ public partial class SamSetupDialog : Window
 
         // Load SAM presets only
         SamPresetCombo.ItemsSource = PresetModels.All
-            .Where(m => m.Kind is YoloKind.SamEncoder or YoloKind.SamDecoder)
+            .Where(m => m.Kind is YoloKind.SamPackage or YoloKind.SamEncoder or YoloKind.SamDecoder)
             .ToList();
         SamPresetCombo.SelectedIndex = 0;
 
@@ -56,6 +56,16 @@ public partial class SamSetupDialog : Window
 
         try
         {
+            if (m.Kind == YoloKind.SamPackage)
+            {
+                var paths = await downloader.DownloadAndExtractSamPackageAsync(m, progress, cts.Token);
+                EncoderPathBox.Text = paths.encoderPath;
+                DecoderPathBox.Text = paths.decoderPath;
+                SamPresetDesc.Text = $"✓ Letöltve és kicsomagolva:\n{paths.encoderPath}\n{paths.decoderPath}";
+                SamDownloadBtn.Content = "Újra";
+                return;
+            }
+
             var path = await downloader.DownloadAsync(m, progress, cts.Token);
 
             // Auto-fill encoder/decoder path

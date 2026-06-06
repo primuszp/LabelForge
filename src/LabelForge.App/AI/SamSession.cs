@@ -104,12 +104,13 @@ public sealed class SamSession : IDisposable
         using var outputs = encoder.Run([NamedOnnxValue.CreateFromTensor(inputName, tensor)]);
         var outList = outputs.ToList();
 
-        imageEmbed    = ToArray(outList, "image_embed")
-                     ?? ToArrayByIndex(outList, 0);
+        imageEmbed = ToArray(outList, "image_embed")
+                  ?? ToArrayByShape(outList, [1, 256, 64, 64])
+                  ?? ToArrayByIndex(outList, 0);
         highResFeats0 = ToArray(outList, "high_res_feats_0")
-                     ?? ToArrayByIndex(outList, 1);
+                     ?? ToArrayByShape(outList, [1, 32, 256, 256]);
         highResFeats1 = ToArray(outList, "high_res_feats_1")
-                     ?? ToArrayByIndex(outList, 2);
+                     ?? ToArrayByShape(outList, [1, 64, 128, 128]);
 
         cachedImgW  = src.PixelWidth;
         cachedImgH  = src.PixelHeight;
@@ -194,6 +195,11 @@ public sealed class SamSession : IDisposable
             ? new DenseTensor<float>(highResFeats0, hrf0Shape) : null;
         var hrf1Tensor  = highResFeats1 is not null
             ? new DenseTensor<float>(highResFeats1, hrf1Shape) : null;
+
+        if (decoder.InputMetadata.ContainsKey("high_res_feats_0") && hrf0Tensor is null)
+            throw new InvalidOperationException("A SAM decoder high_res_feats_0 inputot vár, de az encoder outputból nem sikerült kiolvasni.");
+        if (decoder.InputMetadata.ContainsKey("high_res_feats_1") && hrf1Tensor is null)
+            throw new InvalidOperationException("A SAM decoder high_res_feats_1 inputot vár, de az encoder outputból nem sikerült kiolvasni.");
 
         // Build named inputs (handle models that may omit high_res_feats)
         var inputs = new List<NamedOnnxValue>
@@ -320,6 +326,18 @@ public sealed class SamSession : IDisposable
     {
         if (index >= outputs.Count) return null;
         return TensorToArray(outputs[index].AsTensor<float>());
+    }
+
+    private static float[]? ToArrayByShape(List<DisposableNamedOnnxValue> outputs, int[] shape)
+    {
+        foreach (var output in outputs)
+        {
+            var tensor = output.AsTensor<float>();
+            if (tensor.Dimensions.SequenceEqual(shape))
+                return TensorToArray(tensor);
+        }
+
+        return null;
     }
 
     private static float[] TensorToArray(Tensor<float> t)

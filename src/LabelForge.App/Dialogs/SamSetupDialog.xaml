@@ -28,7 +28,7 @@
                     <Run Text="• Text Encoder"/>
                     <Run Text=" (opcionális, SAM3) – szöveges prompt támogatás&#x0a;&#x0a;"/>
                     <Run Text="SAM2.1 letöltés:  " FontWeight="SemiBold"/>
-                    <Run Text="huggingface.co/Xenova/sam2-hiera-tiny" FontFamily="Consolas"
+                    <Run Text="huggingface.co/vietanhdev/segment-anything-2.1-onnx-models" FontFamily="Consolas"
                          Foreground="{StaticResource AccentBlueBrush}"/>
                     <Run Text="&#x0a;SAM3 export:  " FontWeight="SemiBold"/>
                     <Run Text="github.com/facebookresearch/sam3 → export_onnx.py" FontFamily="Consolas"

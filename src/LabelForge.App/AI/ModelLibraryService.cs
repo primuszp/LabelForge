@@ -52,6 +52,7 @@ public sealed class ModelLibraryService
         YoloKind.SamEncoder => "SAM encoder",
         YoloKind.SamDecoder => "SAM decoder",
         YoloKind.SamTextEncoder => "SAM text",
+        YoloKind.SamPackage => "SAM package",
         _ => "model"
     };
 }

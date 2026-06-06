@@ -2,7 +2,7 @@ using System.IO;
 
 namespace LabelForge.App.AI;
 
-public enum YoloKind { Detection, Segmentation, SamEncoder, SamDecoder, SamTextEncoder }
+public enum YoloKind { Detection, Segmentation, SamEncoder, SamDecoder, SamTextEncoder, SamPackage }
 
 public sealed record PresetModel(
     string  DisplayName,
@@ -15,6 +15,8 @@ public static class PresetModels
 {
     private static readonly string Base11 =
         "https://github.com/ultralytics/assets/releases/download/v8.3.0/";
+    private static readonly string Sam21OnnxBase =
+        "https://huggingface.co/vietanhdev/segment-anything-2.1-onnx-models/resolve/main/";
 
     public static readonly IReadOnlyList<PresetModel> All =
     [
@@ -45,6 +47,23 @@ public static class PresetModels
         new("YOLO11m – Segmentation (medium, ~40 MB)","yolo11m-seg.onnx",
             Base11 + "yolo11m-seg.onnx",             YoloKind.Segmentation,
             "Polygon maszk, kiegyensúlyozott."),
+
+        new("SAM2.1 Tiny - ONNX csomag (~111 MB)", "sam2.1_hiera_tiny_20260221.zip",
+            Sam21OnnxBase + "sam2.1_hiera_tiny_20260221.zip",
+            YoloKind.SamPackage,
+            "SAM2.1 tiny encoder + decoder ONNX. Ajánlott kezdéshez."),
+        new("SAM2.1 Small - ONNX csomag (~136 MB)", "sam2.1_hiera_small_20260221.zip",
+            Sam21OnnxBase + "sam2.1_hiera_small_20260221.zip",
+            YoloKind.SamPackage,
+            "SAM2.1 small encoder + decoder ONNX. Jobb minőség."),
+        new("SAM2.1 Base+ - ONNX csomag (~259 MB)", "sam2.1_hiera_base_plus_20260221.zip",
+            Sam21OnnxBase + "sam2.1_hiera_base_plus_20260221.zip",
+            YoloKind.SamPackage,
+            "SAM2.1 base+ encoder + decoder ONNX. Pontosabb, lassabb."),
+        new("SAM2.1 Large - ONNX csomag (~768 MB)", "sam2.1_hiera_large_20260221.zip",
+            Sam21OnnxBase + "sam2.1_hiera_large_20260221.zip",
+            YoloKind.SamPackage,
+            "SAM2.1 large encoder + decoder ONNX. Legjobb minőség, nagy és lassú."),
 
         // ── SAM2.1 Encoder ────────────────────────────────────────────────
         // Export: pip install sam2 && python export_sam2_onnx.py
@@ -126,6 +145,9 @@ public static class PresetModels
 
     public static string LocalPath(PresetModel m) =>
         Path.Combine(ModelsFolder, m.FileName);
+
+    public static string PackageFolder(PresetModel m) =>
+        Path.Combine(ModelsFolder, Path.GetFileNameWithoutExtension(m.FileName));
 
     public static bool IsDownloaded(PresetModel m) =>
         File.Exists(LocalPath(m));
