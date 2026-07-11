@@ -14,7 +14,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Text="IMAGE INFO"
+                <TextBlock Text="{DynamicResource Panel.ImageInfo}"
                            FontSize="10"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextSecondaryBrush}"

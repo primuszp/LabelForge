@@ -20,7 +20,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="DATASET"
+                <TextBlock Text="{DynamicResource Panel.Dataset}"
                            FontSize="10"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextSecondaryBrush}"
@@ -30,7 +30,7 @@
                         x:Name="OpenFolderButton"
                         Style="{StaticResource IconButtonStyle}"
                         Width="22" Height="22"
-                        ToolTip="Open folder (Ctrl+Shift+O)"
+                        ToolTip="{DynamicResource Tip.OpenFolder}"
                         Click="OpenFolderOnClick">
                     <Path Data="M2,4 H6 L8,6 H14 V13 H2 Z"
                           Fill="{StaticResource TextSecondaryBrush}"
@@ -55,7 +55,7 @@
                 <Button x:Name="PrevButton"
                         Style="{StaticResource IconButtonStyle}"
                         Width="26" Height="26"
-                        ToolTip="Previous image (A)"
+                        ToolTip="{DynamicResource Tip.PreviousImage}"
                         Click="PrevOnClick">
                     <Path Data="M10,2 L4,8 L10,14"
                           Stroke="{StaticResource TextSecondaryBrush}"
@@ -80,7 +80,7 @@
                         x:Name="NextButton"
                         Style="{StaticResource IconButtonStyle}"
                         Width="26" Height="26"
-                        ToolTip="Next image (D)"
+                        ToolTip="{DynamicResource Tip.NextImage}"
                         Click="NextOnClick">
                     <Path Data="M6,2 L12,8 L6,14"
                           Stroke="{StaticResource TextSecondaryBrush}"
@@ -105,7 +105,7 @@
                       Width="32" Height="32"
                       HorizontalAlignment="Center"
                       Margin="0,0,0,10"/>
-                <TextBlock Text="Open a folder to browse images"
+                <TextBlock Text="{DynamicResource Empty.OpenFolder}"
                            Foreground="{StaticResource TextMutedBrush}"
                            FontSize="11"
                            TextWrapping="Wrap"

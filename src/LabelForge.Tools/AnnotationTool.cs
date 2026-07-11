@@ -6,7 +6,7 @@ public enum AnnotationTool
     Rectangle,
     Circle,
     Polygon,
+    FreehandPolygon,
     Polyline,
-    Point,
-    Sam          // SAM2 interactive segmentation
+    Point
 }

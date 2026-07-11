@@ -13,10 +13,9 @@ namespace LabelForge.App.AI;
 public sealed class YoloV8Segmentor : IDisposable
 {
     private readonly InferenceSession session;
-    private const int MaskCoeffCount = 32;
-
     public YoloV8Segmentor(string modelPath)
     {
+        YoloModelInspector.Require(modelPath, YoloKind.Segmentation);
         session = CreateSession(modelPath);
     }
 
@@ -49,10 +48,27 @@ public sealed class YoloV8Segmentor : IDisposable
         var inputName = session.InputMetadata.Keys.First();
         using var outputs = session.Run([NamedOnnxValue.CreateFromTensor(inputName, tensor)]);
 
-        // YOLOv8-seg has two outputs; get them by name if possible, else by index
-        var outList  = outputs.ToList();
-        var output0  = outList[0].AsTensor<float>();   // [1, 4+nc+32, 8400]
-        var protos   = outList[1].AsTensor<float>();   // [1, 32, 160, 160]
+        // Exporters may change output names and order. Identify tensors by rank:
+        // predictions are rank 3, prototype masks are rank 4.
+        var tensors = outputs.Select(output =>
+        {
+            try { return (output.Name, Tensor: output.AsTensor<float>()); }
+            catch (Exception) { return (output.Name, Tensor: (Tensor<float>?)null); }
+        }).Where(item => item.Tensor is not null).ToList();
+
+        var output0 = tensors.FirstOrDefault(item => item.Tensor!.Dimensions.Length == 3).Tensor;
+        var protos = tensors.FirstOrDefault(item => item.Tensor!.Dimensions.Length == 4).Tensor;
+        if (output0 is null || protos is null)
+        {
+            var actual = string.Join(", ", tensors.Select(item =>
+                $"{item.Name}=[{string.Join("×", item.Tensor!.Dimensions.ToArray())}]"));
+            throw new InvalidOperationException(
+                "A kiválasztott ONNX modell nem kompatibilis YOLO szegmentációs modell. " +
+                "A szegmentáláshoz predikciós és prototípus-maszk kimenet is szükséges.\n\n" +
+                $"Kapott kimenetek: {(string.IsNullOrEmpty(actual) ? "nincs float tensor" : actual)}\n\n" +
+                "Válassz *-seg.onnx modellt, vagy exportáld például így:\n" +
+                "yolo export model=yolo11n-seg.pt format=onnx opset=17");
+        }
 
         return PostProcess(output0, protos, image.PixelWidth, image.PixelHeight,
                            scale, padX, padY, confThreshold, nmsThreshold,
@@ -68,8 +84,21 @@ public sealed class YoloV8Segmentor : IDisposable
         float confThreshold, float nmsThreshold, int maxDetections,
         float maskThreshold, double polygonEpsilon)
     {
-        int numClasses   = output0.Dimensions[1] - 4 - MaskCoeffCount;
-        int numProposals = output0.Dimensions[2];
+        if (output0.Dimensions.Length != 3 || protos.Dimensions.Length != 4)
+            throw new InvalidOperationException("Érvénytelen YOLO szegmentációs tensor-dimenziók.");
+
+        int maskCoeffCount = protos.Dimensions[1];
+        bool channelsFirst = output0.Dimensions[1] < output0.Dimensions[2];
+        int channels = channelsFirst ? output0.Dimensions[1] : output0.Dimensions[2];
+        int numClasses = channels - 4 - maskCoeffCount;
+        int numProposals = channelsFirst ? output0.Dimensions[2] : output0.Dimensions[1];
+        float At(int channel, int proposal) => channelsFirst
+            ? output0[0, channel, proposal]
+            : output0[0, proposal, channel];
+        if (maskCoeffCount <= 0 || numClasses <= 0 || numProposals <= 0)
+            throw new InvalidOperationException(
+                $"Nem támogatott YOLO szegmentációs kimenet: predictions=[{string.Join("×", output0.Dimensions.ToArray())}], " +
+                $"prototypes=[{string.Join("×", protos.Dimensions.ToArray())}].");
 
         // 1. Collect raw candidates
         var raw = new List<(float x1, float y1, float x2, float y2,
@@ -80,13 +109,13 @@ public sealed class YoloV8Segmentor : IDisposable
             float maxScore = 0; int bestClass = 0;
             for (int c = 0; c < numClasses; c++)
             {
-                float s = output0[0, 4 + c, i];
+                float s = At(4 + c, i);
                 if (s > maxScore) { maxScore = s; bestClass = c; }
             }
             if (maxScore < confThreshold) continue;
 
-            float cx = output0[0, 0, i], cy = output0[0, 1, i];
-            float w  = output0[0, 2, i], h  = output0[0, 3, i];
+            float cx = At(0, i), cy = At(1, i);
+            float w  = At(2, i), h  = At(3, i);
 
             float x1 = YoloHelper.ToImgX(cx - w / 2, scale, padX, imgW);
             float y1 = YoloHelper.ToImgY(cy - h / 2, scale, padY, imgH);
@@ -95,10 +124,10 @@ public sealed class YoloV8Segmentor : IDisposable
             if (x2 - x1 < 2 || y2 - y1 < 2) continue;
 
             // Mask coefficients
-            var coeff = new float[MaskCoeffCount];
+            var coeff = new float[maskCoeffCount];
             int coeffOff = 4 + numClasses;
-            for (int k = 0; k < MaskCoeffCount; k++)
-                coeff[k] = output0[0, coeffOff + k, i];
+            for (int k = 0; k < maskCoeffCount; k++)
+                coeff[k] = At(coeffOff + k, i);
 
             raw.Add((x1, y1, x2, y2, bestClass, maxScore, coeff));
         }
@@ -149,7 +178,7 @@ public sealed class YoloV8Segmentor : IDisposable
         for (int px = 0; px < protoW; px++)
         {
             float sum = 0;
-            for (int k = 0; k < MaskCoeffCount; k++)
+            for (int k = 0; k < coeff.Length; k++)
                 sum += coeff[k] * protos[0, k, py, px];
             mask[py, px] = YoloHelper.Sigmoid(sum) > maskThreshold;
         }

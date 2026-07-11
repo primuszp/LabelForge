@@ -1,4 +1,5 @@
 using System.Windows.Controls;
+using System.Windows;
 using LabelForge.Tools;
 
 namespace LabelForge.App.Controls;
@@ -12,16 +13,19 @@ public partial class AppStatusBar : UserControl
 
     public void SetTool(AnnotationTool tool)
     {
-        ToolText.Text = tool switch
+        var (icon, key) = tool switch
         {
-            AnnotationTool.Select => "● Select",
-            AnnotationTool.Rectangle => "▭ Rectangle",
-            AnnotationTool.Circle => "○ Ellipse",
-            AnnotationTool.Polygon => "⬡ Polygon",
-            AnnotationTool.Polyline => "⌇ Polyline",
-            AnnotationTool.Point => "· Point",
-            _ => string.Empty
+            AnnotationTool.Select => ("●", "Tool.Select"),
+            AnnotationTool.Rectangle => ("▭", "Tool.Rectangle"),
+            AnnotationTool.Circle => ("○", "Tool.Ellipse"),
+            AnnotationTool.Polygon => ("⬡", "Tool.Polygon"),
+            AnnotationTool.FreehandPolygon => ("✎", "Tool.FreehandPolygon"),
+            AnnotationTool.Polyline => ("⌇", "Tool.Polyline"),
+            AnnotationTool.Point => ("·", "Tool.Point"),
+            _ => (string.Empty, string.Empty)
         };
+        var label = Application.Current.TryFindResource(key)?.ToString() ?? tool.ToString();
+        ToolText.Text = $"{icon} {label}".Trim();
     }
 
     public void SetCursor(double x, double y)
@@ -36,7 +40,8 @@ public partial class AppStatusBar : UserControl
 
     public void SetAnnotationCount(int count)
     {
-        CountText.Text = count == 0 ? string.Empty : $"{count} annotation{(count == 1 ? "" : "s")}";
+        var label = Application.Current.TryFindResource("Status.AnnotationCount")?.ToString() ?? "annotations";
+        CountText.Text = count == 0 ? string.Empty : $"{count} {label}";
     }
 
     public void ClearCursor() => CursorText.Text = string.Empty;

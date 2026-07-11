@@ -10,6 +10,7 @@ public sealed class YoloV8Detector : IDisposable
 
     public YoloV8Detector(string modelPath)
     {
+        YoloModelInspector.Require(modelPath, YoloKind.Detection);
         session = CreateSession(modelPath);
     }
 
@@ -55,8 +56,15 @@ public sealed class YoloV8Detector : IDisposable
         float scale, int padX, int padY,
         float confThreshold, float nmsThreshold)
     {
-        int numClasses = output.Dimensions[1] - 4;
-        int numBoxes   = output.Dimensions[2];
+        if (output.Dimensions.Length != 3)
+            throw new InvalidOperationException("A YOLO predikciós kimenetnek 3 dimenziósnak kell lennie.");
+        bool channelsFirst = output.Dimensions[1] < output.Dimensions[2];
+        int channels = channelsFirst ? output.Dimensions[1] : output.Dimensions[2];
+        int numClasses = channels - 4;
+        int numBoxes = channelsFirst ? output.Dimensions[2] : output.Dimensions[1];
+        if (numClasses <= 0)
+            throw new InvalidOperationException($"Nem támogatott YOLO detection kimenet: [{string.Join("×", output.Dimensions.ToArray())}].");
+        float At(int channel, int box) => channelsFirst ? output[0, channel, box] : output[0, box, channel];
         var raw = new List<DetectionResult>(256);
 
         for (int i = 0; i < numBoxes; i++)
@@ -64,13 +72,13 @@ public sealed class YoloV8Detector : IDisposable
             float maxScore = 0; int bestClass = 0;
             for (int c = 0; c < numClasses; c++)
             {
-                float s = output[0, 4 + c, i];
+                float s = At(4 + c, i);
                 if (s > maxScore) { maxScore = s; bestClass = c; }
             }
             if (maxScore < confThreshold) continue;
 
-            float cx = output[0, 0, i], cy = output[0, 1, i];
-            float w  = output[0, 2, i], h  = output[0, 3, i];
+            float cx = At(0, i), cy = At(1, i);
+            float w  = At(2, i), h  = At(3, i);
 
             float x1 = YoloHelper.ToImgX(cx - w / 2, scale, padX, imgW);
             float y1 = YoloHelper.ToImgY(cy - h / 2, scale, padY, imgH);

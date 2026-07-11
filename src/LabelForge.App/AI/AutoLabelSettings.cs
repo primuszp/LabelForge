@@ -14,19 +14,6 @@ public static class AutoLabelSettings
     public static string DetectionModelPath    { get; set; } = string.Empty;
     public static string SegmentationModelPath { get; set; } = string.Empty;
 
-    // ── SAM2 / SAM3 model paths ───────────────────────────────────────────
-    public static string SamEncoderPath     { get; set; } = string.Empty;
-    public static string SamDecoderPath     { get; set; } = string.Empty;
-
-    /// <summary>Optional: SAM3 text encoder ONNX. If set, enables text prompts.</summary>
-    public static string SamTextEncoderPath { get; set; } = string.Empty;
-
-    public static bool SamReady       => File.Exists(SamEncoderPath) && File.Exists(SamDecoderPath);
-    public static bool SamTextReady   => SamReady && File.Exists(SamTextEncoderPath);
-
-    /// <summary>Last text prompt entered in the SAM toolbar.</summary>
-    public static string SamLastTextPrompt { get; set; } = string.Empty;
-
     // ── Shared inference parameters ───────────────────────────────────────
     public static float  Confidence  { get; set; } = 0.50f;
     public static float  Nms         { get; set; } = 0.30f;
@@ -34,8 +21,20 @@ public static class AutoLabelSettings
     public static float  SegmentationMaskThreshold { get; set; } = 0.50f;
     public static double SegmentationPolygonEpsilon { get; set; } = 2.0;
     public static bool   CurrentOnly { get; set; } = true;
-    public static string ClassNames  { get; set; } =
-        "person\nbicycle\ncar\nmotorcycle\nairplane\nbus\ntrain\ntruck\nboat";
+    private static readonly string[] CocoClassNames =
+    [
+        "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat", "traffic light",
+        "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
+        "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+        "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove", "skateboard", "surfboard",
+        "tennis racket", "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
+        "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+        "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard",
+        "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase", "scissors",
+        "teddy bear", "hair drier", "toothbrush"
+    ];
+
+    public static string ClassNames { get; set; } = string.Join('\n', CocoClassNames);
 
     // ── Convenience ───────────────────────────────────────────────────────
     public static bool DetectionReady    => File.Exists(DetectionModelPath);
@@ -58,10 +57,6 @@ public static class AutoLabelSettings
 
         DetectionModelPath = dto.DetectionModelPath ?? string.Empty;
         SegmentationModelPath = dto.SegmentationModelPath ?? string.Empty;
-        SamEncoderPath = dto.SamEncoderPath ?? string.Empty;
-        SamDecoderPath = dto.SamDecoderPath ?? string.Empty;
-        SamTextEncoderPath = dto.SamTextEncoderPath ?? string.Empty;
-        SamLastTextPrompt = dto.SamLastTextPrompt ?? string.Empty;
         Confidence = dto.Confidence;
         Nms = dto.Nms;
         MaxDet = dto.MaxDet;
@@ -78,10 +73,6 @@ public static class AutoLabelSettings
         {
             DetectionModelPath = DetectionModelPath,
             SegmentationModelPath = SegmentationModelPath,
-            SamEncoderPath = SamEncoderPath,
-            SamDecoderPath = SamDecoderPath,
-            SamTextEncoderPath = SamTextEncoderPath,
-            SamLastTextPrompt = SamLastTextPrompt,
             Confidence = Confidence,
             Nms = Nms,
             MaxDet = MaxDet,
@@ -111,10 +102,6 @@ public static class AutoLabelSettings
     {
         public string? DetectionModelPath { get; set; }
         public string? SegmentationModelPath { get; set; }
-        public string? SamEncoderPath { get; set; }
-        public string? SamDecoderPath { get; set; }
-        public string? SamTextEncoderPath { get; set; }
-        public string? SamLastTextPrompt { get; set; }
         public float Confidence { get; set; } = 0.50f;
         public float Nms { get; set; } = 0.30f;
         public int MaxDet { get; set; }

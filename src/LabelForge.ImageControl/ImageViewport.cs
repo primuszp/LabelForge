@@ -10,6 +10,7 @@ public sealed class ImageViewport : ScrollViewer
     private readonly ScaleTransform scaleTransform = new(1, 1);
     private Point? panStart;
     private Vector scrollOrigin;
+    private bool isSpacePressed;
 
     public ImageViewport()
     {
@@ -23,6 +24,8 @@ public sealed class ImageViewport : ScrollViewer
         MouseDown += OnMouseDown;
         MouseMove += OnMouseMove;
         MouseUp += OnMouseUp;
+        PreviewKeyDown += (_, e) => { if (e.Key == Key.Space) { isSpacePressed = true; Cursor = Cursors.Hand; e.Handled = true; } };
+        PreviewKeyUp += (_, e) => { if (e.Key == Key.Space) { isSpacePressed = false; Cursor = Cursors.Arrow; e.Handled = true; } };
     }
 
     public static readonly DependencyProperty ZoomProperty =
@@ -75,7 +78,7 @@ public sealed class ImageViewport : ScrollViewer
         {
             newElement.LayoutTransform = scaleTransform;
             newElement.SnapsToDevicePixels = true;
-            RenderOptions.SetBitmapScalingMode(newElement, BitmapScalingMode.NearestNeighbor);
+            RenderOptions.SetBitmapScalingMode(newElement, BitmapScalingMode.HighQuality);
             ApplyTransforms();
         }
     }
@@ -94,12 +97,14 @@ public sealed class ImageViewport : ScrollViewer
         UpdateLayout();
         ScrollToHorizontalOffset(before.X * Zoom - mouse.X);
         ScrollToVerticalOffset(before.Y * Zoom - mouse.Y);
+        if (Content is FrameworkElement element)
+            RenderOptions.SetBitmapScalingMode(element, Zoom >= 2 ? BitmapScalingMode.NearestNeighbor : BitmapScalingMode.HighQuality);
         e.Handled = true;
     }
 
     private void OnMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.MiddleButton == MouseButtonState.Pressed)
+        if (e.MiddleButton == MouseButtonState.Pressed || (isSpacePressed && e.ChangedButton == MouseButton.Left))
         {
             panStart = e.GetPosition(this);
             scrollOrigin = new Vector(HorizontalOffset, VerticalOffset);

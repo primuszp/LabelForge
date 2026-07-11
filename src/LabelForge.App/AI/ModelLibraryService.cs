@@ -24,20 +24,17 @@ public sealed class ModelLibraryService
         var fileName = Path.GetFileName(path);
         var preset = PresetModels.All.FirstOrDefault(m =>
             string.Equals(m.FileName, fileName, StringComparison.OrdinalIgnoreCase));
-        var kind = preset?.Kind ?? InferKind(fileName);
+        var inspection = YoloModelInspector.Inspect(path);
+        var kind = inspection.IsCompatible ? inspection.Kind : preset?.Kind ?? InferKind(fileName);
         var displayName = preset is null
-            ? $"{fileName} ({KindLabel(kind)})"
-            : $"{preset.DisplayName} - {fileName}";
+            ? $"{fileName} ({(inspection.IsCompatible ? KindLabel(kind) : "invalid")})"
+            : $"{preset.DisplayName} - {fileName}{(inspection.IsCompatible ? string.Empty : " [invalid]")}";
 
         return new ModelLibraryEntry(displayName, path, kind);
     }
 
     private static YoloKind InferKind(string fileName)
     {
-        if (fileName.Contains("encoder", StringComparison.OrdinalIgnoreCase))
-            return YoloKind.SamEncoder;
-        if (fileName.Contains("decoder", StringComparison.OrdinalIgnoreCase))
-            return YoloKind.SamDecoder;
         if (fileName.Contains("-seg", StringComparison.OrdinalIgnoreCase)
             || fileName.Contains("_seg", StringComparison.OrdinalIgnoreCase))
             return YoloKind.Segmentation;
@@ -49,10 +46,6 @@ public sealed class ModelLibraryService
     {
         YoloKind.Detection => "detection",
         YoloKind.Segmentation => "segmentation",
-        YoloKind.SamEncoder => "SAM encoder",
-        YoloKind.SamDecoder => "SAM decoder",
-        YoloKind.SamTextEncoder => "SAM text",
-        YoloKind.SamPackage => "SAM package",
         _ => "model"
     };
 }

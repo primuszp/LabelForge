@@ -280,12 +280,13 @@
                            TextTrimming="CharacterEllipsis"/>
                 <Button Grid.Column="2"
                         x:Name="RunButton"
-                        Content="Mentés"
+                        Content="Futtat"
                         Style="{StaticResource AccentButtonStyle}"
                         Padding="18,7"
                         IsDefault="True"
                         Click="RunOnClick"/>
                 <Button Grid.Column="4"
+                        x:Name="CloseButton"
                         Content="Bezár"
                         Style="{StaticResource GhostButtonStyle}"
                         Padding="14,7"

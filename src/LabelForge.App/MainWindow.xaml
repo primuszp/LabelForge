@@ -29,7 +29,7 @@
               BorderThickness="0,0,0,1"
               Padding="4,2"
               FontSize="12">
-            <MenuItem Header="File" Foreground="{StaticResource TextPrimaryBrush}">
+            <MenuItem Header="{DynamicResource Menu.File}" Foreground="{StaticResource TextPrimaryBrush}">
                 <MenuItem Header="Új projekt…" Click="NewProjectOnClick"/>
                 <MenuItem Header="Projekt megnyitása…" Click="OpenProjectOnClick"/>
                 <MenuItem x:Name="SaveProjectMenuItem"
@@ -46,48 +46,50 @@
                           IsEnabled="False"
                           Click="CloseProjectOnClick"/>
                 <Separator/>
-                <MenuItem Header="Open Image…" InputGestureText="Ctrl+O" Click="OpenImageOnClick"/>
-                <MenuItem Header="Open Folder…" InputGestureText="Ctrl+Shift+O" Click="OpenFolderOnClick"/>
-                <MenuItem Header="Open JSON…" Click="OpenJsonOnClick"/>
+                <MenuItem Header="{DynamicResource Action.OpenImage}" InputGestureText="Ctrl+O" Click="OpenImageOnClick"/>
+                <MenuItem Header="{DynamicResource Action.OpenFolder}" InputGestureText="Ctrl+Shift+O" Click="OpenFolderOnClick"/>
+                <MenuItem Header="{DynamicResource Action.OpenJson}" Click="OpenJsonOnClick"/>
                 <Separator/>
-                <MenuItem Header="Save" InputGestureText="Ctrl+S" Click="SaveOnClick"/>
-                <MenuItem Header="Save As…" InputGestureText="Ctrl+Shift+S" Click="SaveAsOnClick"/>
+                <MenuItem Header="{DynamicResource Action.Save}" InputGestureText="Ctrl+S" Click="SaveOnClick"/>
+                <MenuItem Header="{DynamicResource Action.SaveAs}" InputGestureText="Ctrl+Shift+S" Click="SaveAsOnClick"/>
                 <Separator/>
-                <MenuItem Header="Exit" Click="ExitOnClick"/>
+                <MenuItem Header="{DynamicResource Action.Exit}" Click="ExitOnClick"/>
             </MenuItem>
-            <MenuItem Header="Edit" Foreground="{StaticResource TextPrimaryBrush}">
-                <MenuItem Header="Undo" InputGestureText="Ctrl+Z" Click="UndoOnClick"/>
-                <MenuItem Header="Redo" InputGestureText="Ctrl+Y" Click="RedoOnClick"/>
+            <MenuItem Header="{DynamicResource Menu.Edit}" Foreground="{StaticResource TextPrimaryBrush}">
+                <MenuItem Header="{DynamicResource Action.Undo}" InputGestureText="Ctrl+Z" Click="UndoOnClick"/>
+                <MenuItem Header="{DynamicResource Action.Redo}" InputGestureText="Ctrl+Y" Click="RedoOnClick"/>
                 <Separator/>
-                <MenuItem Header="Select All" InputGestureText="Ctrl+A" Click="SelectAllOnClick"/>
-                <MenuItem Header="Delete Selected" InputGestureText="Del" Click="DeleteSelectedOnClick"/>
-                <MenuItem Header="Delete All Annotations" Click="DeleteAllOnClick"/>
+                <MenuItem Header="{DynamicResource Action.SelectAll}" InputGestureText="Ctrl+A" Click="SelectAllOnClick"/>
+                <MenuItem Header="{DynamicResource Action.DeleteSelected}" InputGestureText="Del" Click="DeleteSelectedOnClick"/>
+                <MenuItem Header="{DynamicResource Action.DeleteAll}" Click="DeleteAllOnClick"/>
             </MenuItem>
-            <MenuItem Header="View" Foreground="{StaticResource TextPrimaryBrush}">
-                <MenuItem Header="Fit to Window" InputGestureText="F" Click="FitOnClick"/>
-                <MenuItem Header="100% Zoom" InputGestureText="0" Click="ResetZoomOnClick"/>
+            <MenuItem Header="{DynamicResource Menu.View}" Foreground="{StaticResource TextPrimaryBrush}">
+                <MenuItem Header="{DynamicResource Action.Fit}" InputGestureText="F" Click="FitOnClick"/>
+                <MenuItem Header="{DynamicResource Action.Zoom100}" InputGestureText="0" Click="ResetZoomOnClick"/>
                 <Separator/>
-                <MenuItem Header="Toggle Dataset Panel" Click="ToggleDatasetPanelOnClick"/>
-                <MenuItem Header="Toggle Inspector" Click="ToggleInspectorOnClick"/>
+                <MenuItem Header="{DynamicResource Action.ToggleDataset}" Click="ToggleDatasetPanelOnClick"/>
+                <MenuItem Header="{DynamicResource Action.ToggleInspector}" Click="ToggleInspectorOnClick"/>
                 <MenuItem Header="Minimap be/ki" Click="ToggleMiniMapOnClick"/>
             </MenuItem>
-            <MenuItem Header="Tools" Foreground="{StaticResource TextPrimaryBrush}">
-                <MenuItem Header="Select" InputGestureText="V" Click="ToolSelectOnClick"/>
-                <MenuItem Header="Rectangle" InputGestureText="R" Click="ToolRectangleOnClick"/>
-                <MenuItem Header="Ellipse" InputGestureText="E" Click="ToolEllipseOnClick"/>
-                <MenuItem Header="Polygon" InputGestureText="P" Click="ToolPolygonOnClick"/>
-                <MenuItem Header="Polyline" InputGestureText="F" Click="ToolPolylineOnClick"/>
-                <MenuItem Header="Point" InputGestureText="O" Click="ToolPointOnClick"/>
-                <MenuItem Header="SAM2 Szegmentálás" InputGestureText="S" Click="ToolSamOnClick"/>
-                <Separator/>
-                <MenuItem Header="SAM2 Beállítás…" Click="SamSetupOnClick"/>
-                <Separator/>
+            <MenuItem Header="{DynamicResource Menu.Tools}" Foreground="{StaticResource TextPrimaryBrush}">
+                <MenuItem Header="{DynamicResource Tool.Select}" InputGestureText="V" Click="ToolSelectOnClick"/>
+                <MenuItem Header="{DynamicResource Tool.Rectangle}" InputGestureText="R" Click="ToolRectangleOnClick"/>
+                <MenuItem Header="{DynamicResource Tool.Ellipse}" InputGestureText="E" Click="ToolEllipseOnClick"/>
+                <MenuItem Header="{DynamicResource Tool.Polygon}" InputGestureText="P" Click="ToolPolygonOnClick"/>
+                <MenuItem Header="{DynamicResource Tool.FreehandPolygon}" InputGestureText="B" Click="ToolFreehandOnClick"/>
+                <MenuItem Header="{DynamicResource Tool.Polyline}" InputGestureText="L" Click="ToolPolylineOnClick"/>
+                <MenuItem Header="{DynamicResource Tool.Point}" InputGestureText="O" Click="ToolPointOnClick"/>
                 <MenuItem Header="AI Auto-Label (YOLO)…" Click="AutoLabelOnClick"/>
                 <MenuItem Header="Javaslatok elfogadása mind" Click="AcceptAllSuggestionsOnClick"/>
                 <MenuItem Header="Javaslatok törlése" Click="RejectAllSuggestionsOnClick"/>
             </MenuItem>
-            <MenuItem Header="Export" Foreground="{StaticResource TextPrimaryBrush}">
-                <MenuItem Header="Export Annotations…" Click="ExportOnClick"/>
+            <MenuItem Header="{DynamicResource Menu.Export}" Foreground="{StaticResource TextPrimaryBrush}">
+                <MenuItem Header="{DynamicResource Action.ExportAnnotations}" Click="ExportOnClick"/>
+            </MenuItem>
+            <MenuItem Header="{DynamicResource Menu.Language}" Foreground="{StaticResource TextPrimaryBrush}">
+                <MenuItem x:Name="LanguageAutoMenuItem" Header="{DynamicResource Language.Auto}" Tag="auto" Click="LanguageOnClick"/>
+                <MenuItem x:Name="LanguageEnglishMenuItem" Header="{DynamicResource Language.English}" Tag="en" Click="LanguageOnClick"/>
+                <MenuItem x:Name="LanguageHungarianMenuItem" Header="{DynamicResource Language.Hungarian}" Tag="hu" Click="LanguageOnClick"/>
             </MenuItem>
         </Menu>
 
@@ -101,7 +103,7 @@
 
                 <!-- File actions -->
                 <Button Style="{StaticResource IconButtonStyle}" Width="30" Height="30"
-                        ToolTip="Open Image (Ctrl+O)" Click="OpenImageOnClick">
+                        ToolTip="{DynamicResource Action.OpenImage}" Click="OpenImageOnClick">
                     <Path Data="M4,2 H10 L14,6 V15 H2 V2 Z M10,2 V6 H14"
                           Fill="Transparent"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
@@ -109,7 +111,7 @@
                           StrokeLineJoin="Round"/>
                 </Button>
                 <Button Style="{StaticResource IconButtonStyle}" Width="30" Height="30"
-                        ToolTip="Save (Ctrl+S)" Click="SaveOnClick">
+                        ToolTip="{DynamicResource Action.Save}" Click="SaveOnClick">
                     <Path Data="M3,1 H11 L15,5 V15 H1 V1 Z M5,15 V9 H11 V15 M9,1 V5 H5"
                           Fill="Transparent"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
@@ -123,7 +125,7 @@
                 <!-- Tool buttons -->
                 <RadioButton x:Name="SelectToolBtn" Style="{StaticResource ToolButtonStyle}"
                              GroupName="Tools" IsChecked="True"
-                             ToolTip="Select (V)" Checked="SelectToolOnChecked">
+                             ToolTip="{DynamicResource Tool.Select}" Checked="SelectToolOnChecked">
                     <Path Data="M4,2 L4,14 L7,11 L9,15 L11,14 L9,10 L13,10 Z"
                           Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
                           Stretch="Uniform" Width="14" Height="14"/>
@@ -131,7 +133,7 @@
 
                 <RadioButton x:Name="RectToolBtn" Style="{StaticResource ToolButtonStyle}"
                              GroupName="Tools"
-                             ToolTip="Rectangle (R)" Checked="RectangleToolOnChecked">
+                             ToolTip="{DynamicResource Tool.Rectangle}" Checked="RectangleToolOnChecked">
                     <Path Data="M1,3 H15 V13 H1 Z"
                           Fill="Transparent"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
@@ -140,7 +142,7 @@
 
                 <RadioButton x:Name="EllipseToolBtn" Style="{StaticResource ToolButtonStyle}"
                              GroupName="Tools"
-                             ToolTip="Ellipse (E)" Checked="EllipseToolOnChecked">
+                             ToolTip="{DynamicResource Tool.Ellipse}" Checked="EllipseToolOnChecked">
                     <Path Data="M8,2 A6,5 0 1,0 8.001,2 Z"
                           Fill="Transparent"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
@@ -149,16 +151,23 @@
 
                 <RadioButton x:Name="PolygonToolBtn" Style="{StaticResource ToolButtonStyle}"
                              GroupName="Tools"
-                             ToolTip="Polygon (P)" Checked="PolygonToolOnChecked">
+                             ToolTip="{DynamicResource Tool.Polygon}" Checked="PolygonToolOnChecked">
                     <Path Data="M8,1 L14,5 L12,13 L4,13 L2,5 Z"
                           Fill="Transparent"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
                           StrokeThickness="1.5" Stretch="Uniform" Width="14" Height="14"/>
                 </RadioButton>
 
+                <RadioButton x:Name="FreehandToolBtn" Style="{StaticResource ToolButtonStyle}"
+                             GroupName="Tools" ToolTip="{DynamicResource Tool.FreehandPolygon}" Checked="FreehandToolOnChecked">
+                    <Path Data="M2,12 C4,2 7,14 10,5 C11,2 13,3 14,2"
+                          Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
+                          StrokeThickness="1.5" Stretch="Uniform" Width="14" Height="14"/>
+                </RadioButton>
+
                 <RadioButton x:Name="PolylineToolBtn" Style="{StaticResource ToolButtonStyle}"
                              GroupName="Tools"
-                             ToolTip="Polyline (F)" Checked="PolylineToolOnChecked">
+                             ToolTip="{DynamicResource Tool.Polyline}" Checked="PolylineToolOnChecked">
                     <Path Data="M2,12 L5,6 L9,10 L13,4"
                           Fill="Transparent"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
@@ -169,30 +178,9 @@
 
                 <RadioButton x:Name="PointToolBtn" Style="{StaticResource ToolButtonStyle}"
                              GroupName="Tools"
-                             ToolTip="Point (O)" Checked="PointToolOnChecked">
+                             ToolTip="{DynamicResource Tool.Point}" Checked="PointToolOnChecked">
                     <Ellipse Width="7" Height="7"
                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"/>
-                </RadioButton>
-
-                <RadioButton x:Name="SamToolBtn" Style="{StaticResource ToolButtonStyle}"
-                             GroupName="Tools"
-                             ToolTip="SAM2 – Kattintással maszk (S)&#x0a;Bal klikk = objektum | Jobb klikk = kizárás&#x0a;Enter = elfogad | Escape = töröl | Z = utolsó pont visszavon"
-                             Checked="SamToolOnChecked">
-                    <!-- SAM icon: kör + kattintás célpont -->
-                    <Grid Width="14" Height="14">
-                        <Ellipse Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                 StrokeThickness="1.3" Width="12" Height="12"/>
-                        <Path Data="M7,2 V5 M7,9 V12 M2,7 H5 M9,7 H12"
-                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                              StrokeThickness="1.3"
-                              StrokeStartLineCap="Round"
-                              StrokeEndLineCap="Round"
-                              Stretch="None"/>
-                        <Ellipse Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}"
-                                 Width="3" Height="3"
-                                 HorizontalAlignment="Center"
-                                 VerticalAlignment="Center"/>
-                    </Grid>
                 </RadioButton>
 
                 <!-- Vertical separator -->
@@ -200,7 +188,7 @@
 
                 <!-- View actions -->
                 <Button Style="{StaticResource IconButtonStyle}" Width="30" Height="30"
-                        ToolTip="Fit to window (F)" Click="FitOnClick">
+                        ToolTip="{DynamicResource Action.Fit}" Click="FitOnClick">
                     <Path Data="M1,5 V1 H5 M11,1 H15 V5 M15,11 V15 H11 M5,15 H1 V11"
                           Fill="Transparent"
                           Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
@@ -266,44 +254,6 @@
                            VerticalAlignment="Center"
                            Margin="4,0,0,0"
                            Width="28"/>
-
-                <!-- SAM3 text prompt (csak SAM módban látható) -->
-                <Border x:Name="SamTextPanel"
-                        Visibility="Collapsed"
-                        Background="{StaticResource SurfaceBgBrush}"
-                        BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="1" CornerRadius="4"
-                        Margin="4,0" Padding="2,0">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="🔍" FontSize="11"
-                                   VerticalAlignment="Center"
-                                   Margin="4,0,4,0"
-                                   ToolTip="SAM3 szöveges prompt (pl. 'person', 'car')"/>
-                        <TextBox x:Name="SamTextBox"
-                                 Width="120"
-                                 Padding="4,3"
-                                 FontSize="11"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 VerticalAlignment="Center"
-                                 ToolTip="Szöveges prompt – Enter = maszk generálás"
-                                 KeyDown="SamTextBoxOnKeyDown"
-                                 TextChanged="SamTextBoxOnTextChanged"/>
-                        <Button Style="{StaticResource IconButtonStyle}"
-                                Width="22" Height="22"
-                                ToolTip="SAM prompt törlése"
-                                Click="SamTextClearOnClick">
-                            <Path Data="M3,3 L13,13 M13,3 L3,13"
-                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                  StrokeThickness="1.4"
-                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                  Stretch="Uniform" Width="7" Height="7" Fill="Transparent"/>
-                        </Button>
-                    </StackPanel>
-                </Border>
-
-                <!-- Vertical separator -->
-                <Rectangle Width="1" Height="20" Fill="{StaticResource BorderBrush}" Margin="4,0"/>
 
                 <!-- AI Detection quick-run -->
                 <Button x:Name="QuickDetBtn"

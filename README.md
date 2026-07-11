@@ -1,6 +1,6 @@
 # LabelForge
 
-LabelForge is a Windows desktop annotation tool for image labeling workflows. It supports LabelMe JSON persistence, YOLO export, class management, manual drawing tools, and early AI-assisted labeling with YOLO detection/segmentation and SAM-based mask prompting.
+LabelForge is a Windows desktop annotation tool for image labeling workflows. It supports LabelMe JSON persistence, YOLO export, class management, manual drawing tools, and AI-assisted labeling with YOLO detection/segmentation.
 
 ## Current Features
 
@@ -11,7 +11,6 @@ LabelForge is a Windows desktop annotation tool for image labeling workflows. It
 - YOLO, COCO, Pascal VOC, and LabelMe export paths
 - YOLO ONNX auto-label configuration and quick-run buttons
 - Central local model folder for downloaded ONNX models
-- SAM setup and interactive mask prompting
 
 ## Requirements
 

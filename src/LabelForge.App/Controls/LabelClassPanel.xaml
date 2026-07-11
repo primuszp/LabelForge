@@ -23,7 +23,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="LABELS"
+                <TextBlock Text="{DynamicResource Panel.Labels}"
                            FontSize="10"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextSecondaryBrush}"
@@ -33,7 +33,7 @@
                         x:Name="AddLabelButton"
                         Style="{StaticResource IconButtonStyle}"
                         Width="22" Height="22"
-                        ToolTip="Add label class"
+                        ToolTip="{DynamicResource Tip.AddLabel}"
                         Click="AddLabelOnClick">
                     <Path Data="M8,2 V14 M2,8 H14"
                           Stroke="{StaticResource TextSecondaryBrush}"
@@ -66,7 +66,7 @@
                          FontSize="12"
                          KeyDown="NewLabelTextBoxOnKeyDown"/>
                 <Button Grid.Column="1"
-                        Content="Add"
+                        Content="{DynamicResource Action.Add}"
                         Style="{StaticResource AccentButtonStyle}"
                         Margin="4,0,0,0"
                         Padding="8,4"
@@ -210,7 +210,7 @@
                         <Button Grid.Column="6"
                                 Style="{StaticResource IconButtonStyle}"
                                 Width="20" Height="20"
-                                ToolTip="Remove label class"
+                                ToolTip="{DynamicResource Tip.RemoveLabel}"
                                 Tag="{Binding}"
                                 Click="RemoveLabelOnClick">
                             <Path Data="M3,3 L13,13 M13,3 L3,13"

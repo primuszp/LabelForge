@@ -9,5 +9,10 @@ namespace LabelForge.App;
 /// </summary>
 public partial class App : Application
 {
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        Localization.LocalizationService.Initialize();
+        base.OnStartup(e);
+    }
 }
 

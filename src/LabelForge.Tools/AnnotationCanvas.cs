@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,6 +18,8 @@ public sealed class AnnotationCanvas : Canvas
     private readonly Stack<List<Annotation>> redoStack = new();
     private bool isDraggingSelection;
     private bool isPolylineDrawing;
+    private bool isPolygonDrawing;
+    private Annotation? hoveredAnnotation;
     private Annotation? handleAnnotation;
     private int handleIndex = -1;
     private HandleKind handleKind = HandleKind.Vertex;
@@ -26,22 +29,6 @@ public sealed class AnnotationCanvas : Canvas
     private Point2D? circleRadiusPoint;
     private Rect? selectionBox;
     private const double DefaultDraftPointSpacingScreen = 12;
-
-    // ── SAM state ─────────────────────────────────────────────────────────
-    private readonly List<(Point2D point, bool isForeground)> samPoints = [];
-    private System.Windows.Media.Imaging.WriteableBitmap? samMaskBitmap;
-    private bool samIsProcessing;
-
-    /// <summary>
-    /// Host provides this delegate to run SAM decoding.
-    /// Input: prompt points in image px coords + fg flag.
-    /// Returns: bool[imgH, imgW] mask, or null on error.
-    /// </summary>
-    public Func<IReadOnlyList<(Point2D point, bool isForeground)>,
-                Task<bool[,]?>>? SamProvider { get; set; }
-
-    /// <summary>Fired when SAM confirms a polygon so the host can accept it.</summary>
-    public event EventHandler<IReadOnlyList<Point2D>>? SamPolygonConfirmed;
 
     public AnnotationCanvas()
     {
@@ -77,6 +64,7 @@ public sealed class AnnotationCanvas : Canvas
 
     public event EventHandler<AnnotationTool>? ActiveToolChanged;
     public event EventHandler? SelectionChanged;
+    public event EventHandler<string>? InteractionHintChanged;
 
     /// <summary>
     /// Optional lookup: given a label name, returns per-category visual overrides.
@@ -107,12 +95,13 @@ public sealed class AnnotationCanvas : Canvas
     private static void OnActiveToolChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var canvas = (AnnotationCanvas)d;
-        if (canvas.isPolylineDrawing)
+        if (canvas.isPolylineDrawing || canvas.isPolygonDrawing)
         {
             // Tool switched externally while drawing — cancel the in-progress polyline
             if (canvas.activeAnnotation is not null)
                 canvas.Document?.Annotations.Remove(canvas.activeAnnotation);
             canvas.isPolylineDrawing = false;
+            canvas.isPolygonDrawing = false;
             canvas.activeAnnotation = null;
             canvas.ReleaseMouseCapture();
             canvas.InvalidateVisual();
@@ -284,32 +273,8 @@ public sealed class AnnotationCanvas : Canvas
                 annotation == activeAnnotation && annotation.Shape is EllipseShape ? circleCenter : null,
                 annotation == activeAnnotation && annotation.Shape is EllipseShape ? circleRadiusPoint : null,
                 style?.FillOpacity ?? 0.22,
-                style?.StrokeThickness ?? 2.0);
-        }
-
-        // SAM overlay
-        if (ActiveTool == AnnotationTool.Sam)
-        {
-            if (samMaskBitmap is not null)
-                dc.DrawImage(samMaskBitmap,
-                    new Rect(0, 0, samMaskBitmap.PixelWidth, samMaskBitmap.PixelHeight));
-
-            var scale = Math.Max(ViewportZoom, 0.001);
-            foreach (var (pt, fg) in samPoints)
-            {
-                double r = 5.0 / scale;
-                var brush  = fg ? Brushes.LimeGreen : Brushes.OrangeRed;
-                var stroke = new Pen(Brushes.White, 1.5 / scale);
-                dc.DrawEllipse(brush, stroke, new Point(pt.X, pt.Y), r, r);
-            }
-
-            if (samIsProcessing)
-            {
-                // "thinking" indicator – small pulsing dot rendered via opacity
-                dc.PushOpacity(0.6);
-                dc.DrawEllipse(Brushes.Cyan, null, new Point(12 / Math.Max(ViewportZoom, 0.001), 12 / Math.Max(ViewportZoom, 0.001)), 6 / Math.Max(ViewportZoom, 0.001), 6 / Math.Max(ViewportZoom, 0.001));
-                dc.Pop();
-            }
+                style?.StrokeThickness ?? 2.0,
+                annotation == hoveredAnnotation);
         }
 
         if (selectionBox is Rect box)
@@ -324,6 +289,7 @@ public sealed class AnnotationCanvas : Canvas
 
     private static void OnDocumentChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
+        var canvas = (AnnotationCanvas)d;
         if (e.OldValue is ImageDocument oldDocument)
         {
             oldDocument.Annotations.CollectionChanged -= ((AnnotationCanvas)d).OnAnnotationsChanged;
@@ -334,7 +300,13 @@ public sealed class AnnotationCanvas : Canvas
             newDocument.Annotations.CollectionChanged += ((AnnotationCanvas)d).OnAnnotationsChanged;
         }
 
-        ((AnnotationCanvas)d).InvalidateVisual();
+        canvas.undoStack.Clear();
+        canvas.redoStack.Clear();
+        canvas.activeAnnotation = null;
+        canvas.isPolylineDrawing = false;
+        canvas.isPolygonDrawing = false;
+        canvas.hoveredAnnotation = null;
+        canvas.InvalidateVisual();
     }
 
     private void OnAnnotationsChanged(object? sender, NotifyCollectionChangedEventArgs e) => InvalidateVisual();
@@ -347,21 +319,13 @@ public sealed class AnnotationCanvas : Canvas
             return;
         }
 
-        var point = ToPoint2D(e.GetPosition(this));
-
-        if (ActiveTool == AnnotationTool.Sam && e.ChangedButton == MouseButton.Right
-            && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-        {
-            HandleSamClick(point, foreground: false);
-            e.Handled = true;
-            return;
-        }
+        var point = ClampToImage(ToPoint2D(e.GetPosition(this)));
 
         if (e.ChangedButton == MouseButton.Right)
         {
-            if (isPolylineDrawing)
+            if (isPolylineDrawing || isPolygonDrawing)
             {
-                FinishPolyline();
+                FinishActiveShape();
                 e.Handled = true;
                 return;
             }
@@ -437,7 +401,7 @@ public sealed class AnnotationCanvas : Canvas
         // In any drawing tool: if user clicks on a handle of a selected annotation → hijack to select+move
         // Skip this when actively drawing (isPolylineDrawing) because the preview vertex sits exactly
         // under the cursor and would always be detected as a handle hit, cancelling the in-progress draw.
-        if (!isPolylineDrawing)
+        if (!isPolylineDrawing && !isPolygonDrawing)
         {
             var handleHit = HitTestHandle(point);
             if (handleHit is not null)
@@ -457,14 +421,42 @@ public sealed class AnnotationCanvas : Canvas
             }
         }
 
-        if (ActiveTool == AnnotationTool.Sam)
+        if (ActiveTool == AnnotationTool.Polygon)
         {
-            HandleSamClick(point, e.ChangedButton == MouseButton.Left);
-            e.Handled = true;
+            // WPF reports the user's quick second click as ClickCount=2 as well.
+            // Only treat a double-click as finish when at least two fixed vertices
+            // already exist, and commit the clicked endpoint before closing.
+            if (e.ClickCount == 2 && isPolygonDrawing &&
+                activeAnnotation?.Shape is PolygonShape finishingPolygon &&
+                finishingPolygon.Vertices.Count >= 3)
+            {
+                FinishPolygon();
+                e.Handled = true;
+                return;
+            }
+
+            if (!isPolygonDrawing)
+            {
+                SaveUndoState();
+                activeAnnotation = CreateAnnotation(new PolygonShape());
+                var polygon = (PolygonShape)activeAnnotation.Shape;
+                polygon.Vertices.Add(point);
+                polygon.Vertices.Add(point);
+                Document.Annotations.Add(activeAnnotation);
+                isPolygonDrawing = true;
+                CaptureMouse();
+            }
+            else if (activeAnnotation?.Shape is PolygonShape polygon)
+            {
+                polygon.Vertices[^1] = point;
+                polygon.Vertices.Add(point);
+            }
+            Document.IsDirty = true;
+            InvalidateVisual();
             return;
         }
 
-        if (ActiveTool == AnnotationTool.Polygon)
+        if (ActiveTool == AnnotationTool.FreehandPolygon)
         {
             SaveUndoState();
             activeAnnotation = CreateAnnotation(new PolygonShape());
@@ -483,14 +475,6 @@ public sealed class AnnotationCanvas : Canvas
         {
             if (e.ClickCount == 2 && isPolylineDrawing)
             {
-                // WPF fires ClickCount=2 on what the user perceives as their 2nd single click.
-                // First commit this point as a real vertex (same as a normal click),
-                // then finish — so FinishPolyline always sees at least [anchor, fixed, floating].
-                if (activeAnnotation?.Shape is LineShape dblLine)
-                {
-                    dblLine.Vertices[^1] = point; // fix floating as real endpoint
-                    dblLine.Vertices.Add(point);  // add trailing floating (removed by FinishPolyline)
-                }
                 FinishPolyline();
                 e.Handled = true;
                 return;
@@ -549,7 +533,15 @@ public sealed class AnnotationCanvas : Canvas
             return;
         }
 
-        var point = ToPoint2D(e.GetPosition(this));
+        var point = ClampToImage(ToPoint2D(e.GetPosition(this)));
+
+        if (ActiveTool == AnnotationTool.Polygon && isPolygonDrawing && activeAnnotation?.Shape is PolygonShape clickPolygon)
+        {
+            clickPolygon.Vertices[^1] = ClampToImage(point);
+            InteractionHintChanged?.Invoke(this, $"Polygon • {Math.Max(1, clickPolygon.Vertices.Count - 1)} vertices • Enter to finish");
+            InvalidateVisual();
+            return;
+        }
 
         if (ActiveTool == AnnotationTool.Polyline && isPolylineDrawing && activeAnnotation?.Shape is LineShape draftLine)
         {
@@ -558,14 +550,36 @@ public sealed class AnnotationCanvas : Canvas
             return;
         }
 
-        if (ActiveTool == AnnotationTool.Polygon &&
+        if (ActiveTool == AnnotationTool.FreehandPolygon &&
             activeAnnotation?.Shape is PolygonShape draftPolygon &&
             e.LeftButton == MouseButtonState.Pressed)
         {
             UpdateDraftPolygon(draftPolygon, point);
             Document.IsDirty = true;
             InvalidateVisual();
+            InteractionHintChanged?.Invoke(this, $"Freehand polygon • {draftPolygon.Vertices.Count} vertices");
             return;
+        }
+
+        if (ActiveTool == AnnotationTool.Select && e.LeftButton == MouseButtonState.Released)
+        {
+            var hoverHandle = HitTestHandle(point);
+            if (hoverHandle is not null)
+            {
+                hoveredAnnotation = hoverHandle.Value.Annotation;
+                Cursor = CursorForHandle(hoverHandle.Value.Annotation.Shape, hoverHandle.Value.HandleIndex,
+                    hoverHandle.Value.Kind);
+                InvalidateVisual();
+                return;
+            }
+
+            var hover = Document.Annotations.LastOrDefault(a => a.IsVisible && AnnotationGeometry.Contains(a, point, 6 / Math.Max(ViewportZoom, .001)));
+            if (!ReferenceEquals(hoveredAnnotation, hover))
+            {
+                hoveredAnnotation = hover;
+                Cursor = hover is null ? Cursors.Arrow : Cursors.SizeAll;
+                InvalidateVisual();
+            }
         }
 
         if (ActiveTool == AnnotationTool.Select &&
@@ -627,10 +641,29 @@ public sealed class AnnotationCanvas : Canvas
         }
     }
 
+    private static Cursor CursorForHandle(AnnotationShape shape, int index, HandleKind kind)
+    {
+        if (kind == HandleKind.InsertMidpoint) return Cursors.Cross;
+        if (shape is RectangleShape)
+        {
+            return index switch
+            {
+                0 or 4 => Cursors.SizeNWSE,
+                2 or 6 => Cursors.SizeNESW,
+                1 or 5 => Cursors.SizeNS,
+                3 or 7 => Cursors.SizeWE,
+                _ => Cursors.Cross
+            };
+        }
+        return shape is EllipseShape ? Cursors.SizeAll : Cursors.Cross;
+    }
+
     private void OnMouseUp(object sender, MouseButtonEventArgs e)
     {
-        if ((ActiveTool == AnnotationTool.Rectangle || ActiveTool == AnnotationTool.Circle || ActiveTool == AnnotationTool.Polygon) && activeAnnotation is not null)
+        if ((ActiveTool == AnnotationTool.Rectangle || ActiveTool == AnnotationTool.Circle || ActiveTool == AnnotationTool.FreehandPolygon) && activeAnnotation is not null)
         {
+            if (!IsValidShape(activeAnnotation.Shape))
+                Document?.Annotations.Remove(activeAnnotation);
             activeAnnotation = null;
             dragStart = null;
             circleCenter = null;
@@ -664,29 +697,6 @@ public sealed class AnnotationCanvas : Canvas
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
-        if (ActiveTool == AnnotationTool.Sam)
-        {
-            if (e.Key == Key.Return && samPoints.Count > 0 && samMaskBitmap is not null)
-            {
-                ConfirmSamMask();
-                e.Handled = true;
-                return;
-            }
-            if (e.Key == Key.Escape)
-            {
-                ClearSamState();
-                e.Handled = true;
-                return;
-            }
-            if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.None && samPoints.Count > 0)
-            {
-                samPoints.RemoveAt(samPoints.Count - 1);
-                _ = RunSamAsync();
-                e.Handled = true;
-                return;
-            }
-        }
-
         if (e.Key == Key.Delete)
         {
             DeleteSelected();
@@ -694,11 +704,12 @@ public sealed class AnnotationCanvas : Canvas
         }
         else if (e.Key == Key.Escape)
         {
-            if (isPolylineDrawing)
+            if (isPolylineDrawing || isPolygonDrawing)
             {
                 if (activeAnnotation is not null)
                     Document?.Annotations.Remove(activeAnnotation);
                 isPolylineDrawing = false;
+                isPolygonDrawing = false;
                 activeAnnotation = null;
                 ReleaseMouseCapture();
                 InvalidateVisual();
@@ -711,9 +722,24 @@ public sealed class AnnotationCanvas : Canvas
 
             e.Handled = true;
         }
-        else if (e.Key == Key.Return && isPolylineDrawing)
+        else if (e.Key == Key.Return && (isPolylineDrawing || isPolygonDrawing))
         {
-            FinishPolyline();
+            FinishActiveShape();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Back && (isPolylineDrawing || isPolygonDrawing))
+        {
+            RemoveLastDraftVertex();
+            e.Handled = true;
+        }
+        else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.D)
+        {
+            DuplicateSelected();
+            e.Handled = true;
+        }
+        else if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down)
+        {
+            NudgeSelected(e.Key, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 10 : 1);
             e.Handled = true;
         }
         else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Z)
@@ -749,7 +775,10 @@ public sealed class AnnotationCanvas : Canvas
             case Key.P:
                 ActiveTool = AnnotationTool.Polygon;
                 return true;
-            case Key.F:
+            case Key.B:
+                ActiveTool = AnnotationTool.FreehandPolygon;
+                return true;
+            case Key.L:
                 ActiveTool = AnnotationTool.Polyline;
                 return true;
             case Key.O:
@@ -810,6 +839,12 @@ public sealed class AnnotationCanvas : Canvas
         switch (activeAnnotation?.Shape)
         {
             case RectangleShape rectangle:
+                if (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+                {
+                    var size = Math.Max(Math.Abs(end.X - start.X), Math.Abs(end.Y - start.Y));
+                    end = new Point2D(start.X + Math.Sign(end.X - start.X) * size,
+                        start.Y + Math.Sign(end.Y - start.Y) * size);
+                }
                 var updatedRectangle = new RectangleShape(start, end);
                 rectangle.X = updatedRectangle.X;
                 rectangle.Y = updatedRectangle.Y;
@@ -831,6 +866,15 @@ public sealed class AnnotationCanvas : Canvas
                 break;
         }
     }
+
+    private static bool IsValidShape(AnnotationShape shape) => shape switch
+    {
+        RectangleShape r => r.Width >= 2 && r.Height >= 2,
+        EllipseShape e => e.Width >= 2 && e.Height >= 2,
+        PolygonShape p => p.Vertices.Count >= 3,
+        LineShape l => l.Vertices.Count >= 2,
+        _ => true
+    };
 
     private static EllipseShape CreateCircleFromCenter(Point2D center, Point2D edge)
     {
@@ -907,6 +951,24 @@ public sealed class AnnotationCanvas : Canvas
                 InvalidateVisual();
                 break;
         }
+
+    }
+
+    private static void DrawAnnotationBadge(DrawingContext dc, Annotation annotation, double scale, Color color)
+    {
+        var points = annotation.Shape.Points;
+        if (points.Count == 0) return;
+        var label = annotation.IsSuggestion
+            ? $"AI  {annotation.Label}{(annotation.Confidence is double confidence ? $"  {confidence:P0}" : string.Empty)}"
+            : annotation.Label;
+        var text = new FormattedText(label, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+            new Typeface("Segoe UI Semibold"), 11 / scale, Brushes.White, 1);
+        var x = points.Min(p => p.X);
+        var y = points.Min(p => p.Y) - text.Height - 4 / scale;
+        var rect = new Rect(x, Math.Max(0, y), text.Width + 10 / scale, text.Height + 4 / scale);
+        var background = new SolidColorBrush(Color.FromArgb(225, color.R, color.G, color.B));
+        dc.DrawRoundedRectangle(background, null, rect, 3 / scale, 3 / scale);
+        dc.DrawText(text, new Point(rect.X + 5 / scale, rect.Y + 2 / scale));
     }
 
     private static void MoveHandleTo(Annotation annotation, int handleIndex, Point2D point)
@@ -1106,11 +1168,79 @@ public sealed class AnnotationCanvas : Canvas
         ActiveTool = AnnotationTool.Select;
     }
 
+    private void FinishPolygon()
+    {
+        if (activeAnnotation?.Shape is PolygonShape polygon)
+        {
+            if (polygon.Vertices.Count > 1) polygon.Vertices.RemoveAt(polygon.Vertices.Count - 1);
+            if (polygon.Vertices.Count < 3) Document?.Annotations.Remove(activeAnnotation);
+        }
+        isPolygonDrawing = false;
+        activeAnnotation = null;
+        ReleaseMouseCapture();
+        InteractionHintChanged?.Invoke(this, string.Empty);
+        InvalidateVisual();
+        ActiveTool = AnnotationTool.Select;
+    }
+
+    private void RemoveLastDraftVertex()
+    {
+        if (activeAnnotation?.Shape is PolygonShape polygon && polygon.Vertices.Count > 2)
+            polygon.Vertices.RemoveAt(polygon.Vertices.Count - 2);
+        else if (activeAnnotation?.Shape is LineShape line && line.Vertices.Count > 2)
+            line.Vertices.RemoveAt(line.Vertices.Count - 2);
+        InvalidateVisual();
+    }
+
+    private void DuplicateSelected()
+    {
+        if (Document is null) return;
+        var selected = Document.Annotations.Where(a => a.IsSelected).ToList();
+        if (selected.Count == 0) return;
+        SaveUndoState();
+        foreach (var annotation in Document.Annotations) annotation.IsSelected = false;
+        foreach (var source in selected)
+        {
+            var clone = CloneAnnotation(source);
+            AnnotationGeometry.Move(clone, 10, 10);
+            clone.IsSelected = true;
+            Document.Annotations.Add(clone);
+        }
+        Document.IsDirty = true;
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateVisual();
+    }
+
+    private void NudgeSelected(Key key, double amount)
+    {
+        if (Document is null || !Document.Annotations.Any(a => a.IsSelected)) return;
+        SaveUndoState();
+        var (dx, dy) = key switch
+        {
+            Key.Left => (-amount, 0d), Key.Right => (amount, 0d),
+            Key.Up => (0d, -amount), _ => (0d, amount)
+        };
+        foreach (var annotation in Document.Annotations.Where(a => a.IsSelected))
+            AnnotationGeometry.Move(annotation, dx, dy);
+        Document.IsDirty = true;
+        InvalidateVisual();
+    }
+
+    private Point2D ClampToImage(Point2D point) => Document?.Image is { } image
+        ? new Point2D(Math.Clamp(point.X, 0, image.Width), Math.Clamp(point.Y, 0, image.Height))
+        : point;
+
     private void FinishActiveShape()
     {
         if (isPolylineDrawing)
         {
             FinishPolyline();
+            return;
+        }
+
+        if (isPolygonDrawing)
+        {
+            FinishPolygon();
             return;
         }
 
@@ -1307,7 +1437,8 @@ public sealed class AnnotationCanvas : Canvas
         Point2D? draftCircleCenter,
         Point2D? draftCircleRadiusPoint,
         double fillOpacity = 0.22,
-        double baseStrokeThickness = 2.0)
+        double baseStrokeThickness = 2.0,
+        bool isHovered = false)
     {
         var objectColor = ParseColor(annotation.Color);
         var strokeColor = annotation.IsSelected
@@ -1323,9 +1454,10 @@ public sealed class AnnotationCanvas : Canvas
         var scale = Math.Max(zoom, 0.001);
         var strokeWidth = annotation.IsSelected
             ? (baseStrokeThickness + 1.0) / scale
-            : baseStrokeThickness / scale;
+            : (baseStrokeThickness + (isHovered ? 1.0 : 0.0)) / scale;
         var pen = new Pen(new SolidColorBrush(strokeColor), strokeWidth);
-        // No special rendering for IsSuggestion – looks like manual annotation
+        if (annotation.IsSuggestion)
+            pen.DashStyle = DashStyles.Dash;
         pen.Freeze();
 
         switch (annotation.Shape)
@@ -1354,6 +1486,9 @@ public sealed class AnnotationCanvas : Canvas
                 dc.DrawEllipse(brush, pen, new Point(point.Point.X, point.Point.Y), 4 / scale, 4 / scale);
                 break;
         }
+
+        if (annotation.IsSelected || annotation.IsSuggestion || isHovered)
+            DrawAnnotationBadge(dc, annotation, scale, objectColor);
 
         if (annotation.IsSelected)
         {
@@ -1524,143 +1659,4 @@ public sealed class AnnotationCanvas : Canvas
 
     private static Point2D ToPoint2D(Point point) => new(point.X, point.Y);
 
-    // ── SAM helpers ───────────────────────────────────────────────────────
-
-    private void HandleSamClick(Point2D point, bool foreground)
-    {
-        samPoints.Add((point, foreground));
-        _ = RunSamAsync();
-    }
-
-    private async Task RunSamAsync()
-    {
-        if (SamProvider is null || samPoints.Count == 0) return;
-        samIsProcessing = true;
-        InvalidateVisual();
-
-        try
-        {
-            var mask = await SamProvider(samPoints);
-            if (mask is not null && Document?.Image is not null)
-            {
-                samMaskBitmap = BuildMaskBitmap(mask, Document.Image.Width, Document.Image.Height);
-            }
-            else
-            {
-                samMaskBitmap = null;
-            }
-        }
-        catch
-        {
-            samMaskBitmap = null;
-        }
-        finally
-        {
-            samIsProcessing = false;
-            InvalidateVisual();
-        }
-    }
-
-    private void ConfirmSamMask()
-    {
-        if (samMaskBitmap is null || Document?.Image is null) return;
-
-        // Rebuild polygon from last mask
-        if (SamProvider is null) return;
-
-        // We already have samMaskBitmap; re-extract polygon from it
-        var polygon = ExtractPolygonFromBitmap(samMaskBitmap);
-        if (polygon.Count >= 3)
-        {
-            SaveUndoState();
-            SamPolygonConfirmed?.Invoke(this, polygon);
-            Document.IsDirty = true;
-        }
-        ClearSamState();
-    }
-
-    /// <summary>Trigger SAM decode using only text prompt (no click points needed for SAM3).</summary>
-    public async Task TriggerSamWithText()
-    {
-        if (SamProvider is null) return;
-        samIsProcessing = true;
-        InvalidateVisual();
-        try
-        {
-            // Pass empty point list; text comes from SamProvider closure in MainWindow
-            var mask = await SamProvider([]);
-            if (mask is not null && Document?.Image is not null)
-                samMaskBitmap = BuildMaskBitmap(mask, Document.Image.Width, Document.Image.Height);
-        }
-        catch { samMaskBitmap = null; }
-        finally { samIsProcessing = false; InvalidateVisual(); }
-    }
-
-    public void ClearSamState()
-    {
-        samPoints.Clear();
-        samMaskBitmap = null;
-        samIsProcessing = false;
-        InvalidateVisual();
-    }
-
-    private static System.Windows.Media.Imaging.WriteableBitmap BuildMaskBitmap(
-        bool[,] mask, int imgW, int imgH)
-    {
-        var bmp = new System.Windows.Media.Imaging.WriteableBitmap(
-            imgW, imgH, 96, 96, PixelFormats.Bgra32, null);
-        var pixels = new byte[imgH * imgW * 4];
-
-        for (int y = 0; y < imgH; y++)
-        for (int x = 0; x < imgW; x++)
-        {
-            if (!mask[y, x]) continue;
-            int idx = (y * imgW + x) * 4;
-            pixels[idx]     = 180;  // B (cyan-ish)
-            pixels[idx + 1] = 220;  // G
-            pixels[idx + 2] = 100;  // R
-            pixels[idx + 3] = 110;  // A (semi-transparent)
-        }
-
-        bmp.WritePixels(new System.Windows.Int32Rect(0, 0, imgW, imgH),
-                        pixels, imgW * 4, 0);
-        return bmp;
-    }
-
-    private static List<Point2D> ExtractPolygonFromBitmap(
-        System.Windows.Media.Imaging.WriteableBitmap bmp)
-    {
-        int w = bmp.PixelWidth, h = bmp.PixelHeight;
-        var pixels = new byte[h * w * 4];
-        bmp.CopyPixels(pixels, w * 4, 0);
-
-        var left  = new List<Point2D>(h);
-        var right = new List<Point2D>(h);
-
-        for (int y = 0; y < h; y++)
-        {
-            int f = -1, l = -1;
-            for (int x = 0; x < w; x++)
-            {
-                if (pixels[(y * w + x) * 4 + 3] > 0)
-                {
-                    if (f < 0) f = x;
-                    l = x;
-                }
-            }
-            if (f < 0) continue;
-            left.Add(new Point2D(f, y));
-            right.Add(new Point2D(l, y));
-        }
-
-        if (left.Count < 3) return [];
-
-        var poly = new List<Point2D>(left.Count + right.Count);
-        poly.AddRange(left);
-        for (int i = right.Count - 1; i >= 0; i--) poly.Add(right[i]);
-
-        // Downsample: every 4th row for performance
-        var sampled = poly.Where((_, i) => i % 4 == 0).ToList();
-        return sampled.Count >= 3 ? sampled : poly;
-    }
 }

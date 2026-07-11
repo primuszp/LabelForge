@@ -24,7 +24,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Text="ANNOTATIONS"
+                <TextBlock Text="{DynamicResource Panel.Annotations}"
                            FontSize="10"
                            FontWeight="SemiBold"
                            Foreground="{StaticResource TextSecondaryBrush}"
@@ -124,7 +124,7 @@
                         <Button Grid.Column="3"
                                 Style="{StaticResource IconButtonStyle}"
                                 Width="20" Height="20"
-                                ToolTip="Toggle visibility"
+                                ToolTip="{DynamicResource Tip.ToggleVisibility}"
                                 Tag="{Binding}"
                                 Click="ToggleVisibilityOnClick">
                             <Path Width="11" Height="11"
@@ -149,7 +149,7 @@
                         <Button Grid.Column="4"
                                 Style="{StaticResource IconButtonStyle}"
                                 Width="20" Height="20"
-                                ToolTip="Delete annotation"
+                                ToolTip="{DynamicResource Tip.DeleteAnnotation}"
                                 Tag="{Binding}"
                                 Click="DeleteAnnotationOnClick">
                             <Path Data="M3,3 L13,13 M13,3 L3,13"

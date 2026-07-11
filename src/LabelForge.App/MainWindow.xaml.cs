@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using LabelForge.App.Dialogs;
+using LabelForge.App.Localization;
 using LabelForge.App.Services;
 using LabelForge.App.ViewModels;
 using LabelForge.Core;
@@ -21,9 +22,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly LabelClassService labelService = new();
     private readonly DatasetViewModel datasetViewModel = new();
     private readonly ProjectService projectService = new();
+    private readonly SemaphoreSlim navigationGate = new(1, 1);
     private ImageDocument document = new();
-    private LabelForge.App.AI.SamSession? samSession;
-    private CancellationTokenSource? samEncodeCts;
     private string activeLabelName = "object";
     private string activeLabelColor = "#22c55e";
 
@@ -67,17 +67,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         MiniMap.SetViewport(Viewport);
         Viewport.ScrollChanged += (_, _) => MiniMap.Refresh();
 
-        AnnotationCanvas.SamPolygonConfirmed += OnSamPolygonConfirmed;
-        AnnotationCanvas.SamProvider = pts => SamDecodeAsync(pts);
-
-        AnnotationCanvas.ActiveToolChanged += (_, tool) =>
-        {
-            SamTextPanel.Visibility = tool == AnnotationTool.Sam
-                ? Visibility.Visible : Visibility.Collapsed;
-        };
-
         StatusBar.SetTool(AnnotationTool.Select);
         StatusBar.SetZoom(1.0);
+        UpdateLanguageMenu();
 
         _ = InitializeAsync();
     }
@@ -125,10 +117,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public ICommand SelectAllCommand => new RelayCommand(_ => AnnotationCanvas.SelectAll());
     public ICommand DeleteSelectedCommand => new RelayCommand(_ => AnnotationCanvas.DeleteSelected());
 
+    private void LanguageOnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.MenuItem { Tag: string language })
+        {
+            LocalizationService.Apply(language);
+            UpdateLanguageMenu();
+        }
+    }
+
+    private void UpdateLanguageMenu()
+    {
+        LanguageAutoMenuItem.IsChecked = LocalizationService.Preference == "auto";
+        LanguageEnglishMenuItem.IsChecked = LocalizationService.Preference == "en";
+        LanguageHungarianMenuItem.IsChecked = LocalizationService.Preference == "hu";
+    }
+
     private async Task InitializeAsync()
     {
         await LabelForge.App.AI.AutoLabelSettings.LoadAsync();
-        SamTextBox.Text = LabelForge.App.AI.AutoLabelSettings.SamLastTextPrompt;
         UpdateQuickAiButtons();
 
         await labelService.LoadAsync();
@@ -346,7 +353,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var imagePaths = datasetViewModel.Images.Select(i => i.FilePath).ToList();
         var dlg = new AutoLabelDialog(Document.Image is not null ? Document : null,
                                       imagePaths, this, preselect);
-        dlg.ShowDialog();
+        var applied = dlg.ShowDialog() == true;
+        if (applied)
+        {
+            foreach (var imagePath in imagePaths)
+                datasetViewModel.RefreshAnnotationState(imagePath);
+        }
         UpdateQuickAiButtons();
         AnnotationCanvas.InvalidateVisual();
         AnnotationInspector.Refresh();
@@ -478,148 +490,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // ── Tool menu / toolbar ──
 
-    // ── SAM2 ──
-
-    private void ToolSamOnClick(object sender, RoutedEventArgs e)
-    {
-        if (!LabelForge.App.AI.AutoLabelSettings.SamReady)
-        {
-            SamSetupOnClick(sender, e);
-            return;
-        }
-        AnnotationCanvas.ActiveTool = AnnotationTool.Sam;
-    }
-
-    private void SamToolOnChecked(object sender, RoutedEventArgs e)
-    {
-        if (AnnotationCanvas is null) return;
-        if (!LabelForge.App.AI.AutoLabelSettings.SamReady)
-        {
-            SamSetupOnClick(sender, e);
-            SelectToolBtn.IsChecked = true;
-            return;
-        }
-        AnnotationCanvas.ActiveTool = AnnotationTool.Sam;
-        EnsureSamSession();
-    }
-
-    private void SamSetupOnClick(object sender, RoutedEventArgs e)
-    {
-        var dlg = new Dialogs.SamSetupDialog(this);
-        if (dlg.ShowDialog() == true)
-        {
-            EnsureSamSession();
-        }
-    }
-
-    private void EnsureSamSession()
-    {
-        if (!LabelForge.App.AI.AutoLabelSettings.SamReady) return;
-
-        if (samSession is not null) { samSession.Dispose(); samSession = null; }
-
-        try
-        {
-            samSession = new LabelForge.App.AI.SamSession(
-                LabelForge.App.AI.AutoLabelSettings.SamEncoderPath,
-                LabelForge.App.AI.AutoLabelSettings.SamDecoderPath,
-                LabelForge.App.AI.AutoLabelSettings.SamTextEncoderPath);
-            // Start encoding current image
-            if (Document.Image?.FilePath is string path)
-                StartSamEncoding(path);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, $"SAM2 betöltési hiba:\n{ex.Message}", "SAM2",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            samSession = null;
-        }
-    }
-
-    private void StartSamEncoding(string imagePath)
-    {
-        if (samSession is null) return;
-        samEncodeCts?.Cancel();
-        samEncodeCts = new CancellationTokenSource();
-        var ct = samEncodeCts.Token;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var bmp = LoadFrozenBitmap(imagePath);
-                await samSession.EncodeAsync(bmp, ct);
-                Dispatcher.Invoke(() => StatusBar.SetTool(AnnotationTool.Sam));
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                Dispatcher.Invoke(() =>
-                    MessageBox.Show(this, $"SAM2 encoding hiba:\n{ex.Message}", "SAM2",
-                        MessageBoxButton.OK, MessageBoxImage.Warning));
-            }
-        }, ct);
-    }
-
-    private async Task<bool[,]?> SamDecodeAsync(
-        IReadOnlyList<(LabelForge.Core.Point2D, bool)> points)
-    {
-        if (samSession?.HasEmbedding != true) return null;
-        var text = SamTextBox.Text.Trim();
-        return await samSession.DecodeAsync(points,
-            string.IsNullOrEmpty(text) ? null : text);
-    }
-
-    private void SamTextBoxOnKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key != Key.Enter) return;
-        e.Handled = true;
-        // Trigger decode with current text even without click points
-        if (samSession?.HasEmbedding == true)
-            _ = AnnotationCanvas.TriggerSamWithText();
-    }
-
-    private void SamTextBoxOnTextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
-    {
-        LabelForge.App.AI.AutoLabelSettings.SamLastTextPrompt = SamTextBox.Text;
-    }
-
-    private void SamTextClearOnClick(object sender, RoutedEventArgs e)
-    {
-        SamTextBox.Text = string.Empty;
-        AnnotationCanvas.ClearSamState();
-    }
-
-    private void OnSamPolygonConfirmed(object? sender,
-        IReadOnlyList<LabelForge.Core.Point2D> polygon)
-    {
-        var shape = new PolygonShape();
-        foreach (var pt in polygon) shape.Vertices.Add(pt);
-        Document.Annotations.Add(new Annotation
-        {
-            Label = ActiveLabelName,
-            Color = ActiveLabelColor,
-            Shape = shape,
-            IsSelected = true
-        });
-        AnnotationInspector.Refresh();
-        AnnotationCanvas.InvalidateVisual();
-    }
-
-    private static BitmapImage LoadFrozenBitmap(string path)
-    {
-        var bmp = new BitmapImage();
-        bmp.BeginInit();
-        bmp.CacheOption = BitmapCacheOption.OnLoad;
-        bmp.UriSource = new Uri(path, UriKind.Absolute);
-        bmp.EndInit();
-        bmp.Freeze();
-        return bmp;
-    }
-
     private void ToolSelectOnClick(object sender, RoutedEventArgs e) => AnnotationCanvas.ActiveTool = AnnotationTool.Select;
     private void ToolRectangleOnClick(object sender, RoutedEventArgs e) => AnnotationCanvas.ActiveTool = AnnotationTool.Rectangle;
     private void ToolEllipseOnClick(object sender, RoutedEventArgs e) => AnnotationCanvas.ActiveTool = AnnotationTool.Circle;
     private void ToolPolygonOnClick(object sender, RoutedEventArgs e) => AnnotationCanvas.ActiveTool = AnnotationTool.Polygon;
+    private void ToolFreehandOnClick(object sender, RoutedEventArgs e) => AnnotationCanvas.ActiveTool = AnnotationTool.FreehandPolygon;
     private void ToolPolylineOnClick(object sender, RoutedEventArgs e) => AnnotationCanvas.ActiveTool = AnnotationTool.Polyline;
     private void ToolPointOnClick(object sender, RoutedEventArgs e) => AnnotationCanvas.ActiveTool = AnnotationTool.Point;
 
@@ -627,6 +502,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void RectangleToolOnChecked(object sender, RoutedEventArgs e) { if (AnnotationCanvas is not null) AnnotationCanvas.ActiveTool = AnnotationTool.Rectangle; }
     private void EllipseToolOnChecked(object sender, RoutedEventArgs e) { if (AnnotationCanvas is not null) AnnotationCanvas.ActiveTool = AnnotationTool.Circle; }
     private void PolygonToolOnChecked(object sender, RoutedEventArgs e) { if (AnnotationCanvas is not null) AnnotationCanvas.ActiveTool = AnnotationTool.Polygon; }
+    private void FreehandToolOnChecked(object sender, RoutedEventArgs e) { if (AnnotationCanvas is not null) AnnotationCanvas.ActiveTool = AnnotationTool.FreehandPolygon; }
     private void PolylineToolOnChecked(object sender, RoutedEventArgs e) { if (AnnotationCanvas is not null) AnnotationCanvas.ActiveTool = AnnotationTool.Polyline; }
     private void PointToolOnChecked(object sender, RoutedEventArgs e) { if (AnnotationCanvas is not null) AnnotationCanvas.ActiveTool = AnnotationTool.Point; }
 
@@ -636,9 +512,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         RectToolBtn.IsChecked    = tool == AnnotationTool.Rectangle;
         EllipseToolBtn.IsChecked = tool == AnnotationTool.Circle;
         PolygonToolBtn.IsChecked = tool == AnnotationTool.Polygon;
+        FreehandToolBtn.IsChecked = tool == AnnotationTool.FreehandPolygon;
         PolylineToolBtn.IsChecked = tool == AnnotationTool.Polyline;
         PointToolBtn.IsChecked   = tool == AnnotationTool.Point;
-        SamToolBtn.IsChecked     = tool == AnnotationTool.Sam;
         StatusBar.SetTool(tool);
     }
 
@@ -676,15 +552,31 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void OnDatasetImageSelected(object? sender, DatasetImageEntry entry)
     {
-        await AutoSaveIfDirtyAsync();
-        await LoadImageFromEntryAsync(entry);
+        await NavigateToImageAsync(entry);
     }
 
     private async void OnDatasetImageNavigated(object? sender, DatasetImageEntry entry)
     {
-        // Fired by NavigatePrev/NavigateNext (not by list click)
-        await AutoSaveIfDirtyAsync();
-        await LoadImageFromEntryAsync(entry);
+        await NavigateToImageAsync(entry);
+    }
+
+    private async Task NavigateToImageAsync(DatasetImageEntry entry)
+    {
+        await navigationGate.WaitAsync();
+        try
+        {
+            await AutoSaveIfDirtyAsync();
+            await LoadImageFromEntryAsync(entry);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"A kép nem nyitható meg:\n{ex.Message}", "LabelForge",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            navigationGate.Release();
+        }
     }
 
     private void OpenImage()
@@ -736,14 +628,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         switch (e.Key)
         {
             case Key.A when datasetViewModel.HasPrevious:
-                _ = AutoSaveIfDirtyAsync().ContinueWith(_ =>
-                    Dispatcher.Invoke(() => datasetViewModel.NavigatePrev()));
+                datasetViewModel.NavigatePrev();
                 e.Handled = true;
                 break;
 
             case Key.D when datasetViewModel.HasNext:
-                _ = AutoSaveIfDirtyAsync().ContinueWith(_ =>
-                    Dispatcher.Invoke(() => datasetViewModel.NavigateNext()));
+                datasetViewModel.NavigateNext();
                 e.Handled = true;
                 break;
 
@@ -751,15 +641,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             case Key.R: AnnotationCanvas.ActiveTool = AnnotationTool.Rectangle; e.Handled = true; break;
             case Key.E: AnnotationCanvas.ActiveTool = AnnotationTool.Circle; e.Handled = true; break;
             case Key.P: AnnotationCanvas.ActiveTool = AnnotationTool.Polygon; e.Handled = true; break;
+            case Key.B: AnnotationCanvas.ActiveTool = AnnotationTool.FreehandPolygon; e.Handled = true; break;
+            case Key.L: AnnotationCanvas.ActiveTool = AnnotationTool.Polyline; e.Handled = true; break;
             case Key.O: AnnotationCanvas.ActiveTool = AnnotationTool.Point; e.Handled = true; break;
-            case Key.S:
-                if (LabelForge.App.AI.AutoLabelSettings.SamReady)
-                {
-                    AnnotationCanvas.ActiveTool = AnnotationTool.Sam;
-                    e.Handled = true;
-                }
-                break;
-
+            case Key.F: FitImageToWindow(); e.Handled = true; break;
             case Key.H:
             {
                 var selected = Document.Annotations.FirstOrDefault(a => a.IsSelected);
@@ -815,8 +700,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         await labelService.SaveAsync();
-        samEncodeCts?.Cancel();
-        samSession?.Dispose();
     }
 
     // ── Internal helpers ──
@@ -842,8 +725,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         targetDocument.Image = new ImageInfo(imagePath, bitmap.PixelWidth, bitmap.PixelHeight);
         Document = targetDocument;
         MiniMap.SetImage(bitmap);
-        AnnotationCanvas.ClearSamState();
-        if (samSession is not null) StartSamEncoding(imagePath);
         EmptyState.Visibility = Visibility.Collapsed;
         UpdateQuickAiButtons();
         UpdateTitle();
@@ -918,7 +799,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private async Task AutoSaveIfDirtyAsync()
     {
         if (Document.IsDirty && Document.AnnotationFilePath is not null)
+        {
             await annotationStore.SaveAsync(Document, Document.AnnotationFilePath);
+            Document.IsDirty = false;
+            datasetViewModel.RefreshAnnotationState(Document.Image?.FilePath ?? string.Empty);
+            UpdateTitle();
+        }
     }
 
     private void UpdateTitle()

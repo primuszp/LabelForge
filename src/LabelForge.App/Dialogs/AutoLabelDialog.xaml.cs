@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using LabelForge.App.AI;
 using LabelForge.Core;
+using LabelForge.Persistence;
 using Microsoft.Win32;
 
 namespace LabelForge.App.Dialogs;
@@ -15,6 +16,7 @@ public partial class AutoLabelDialog : Window
     private readonly IReadOnlyList<string> datasetImagePaths;
     private readonly ModelDownloadService  downloader = new();
     private readonly ModelLibraryService   modelLibrary = new();
+    private readonly LabelMeAnnotationStore annotationStore = new();
     private CancellationTokenSource?       downloadCts;
 
     /// <param name="preselect">null=last used, true=detection, false=segmentation</param>
@@ -156,11 +158,16 @@ public partial class AutoLabelDialog : Window
         };
         if (dlg.ShowDialog(this) == true)
         {
+            var info = YoloModelInspector.Inspect(dlg.FileName);
+            if (!info.IsCompatible)
+            {
+                MessageBox.Show(this, info.Message, "Nem kompatibilis modell", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
             ModelPathBox.Text = dlg.FileName;
-            // Auto-select segmentation if filename contains "seg"
-            bool isSeg = dlg.FileName.Contains("-seg", StringComparison.OrdinalIgnoreCase);
-            DetectionRadio.IsChecked    = !isSeg;
-            SegmentationRadio.IsChecked = isSeg;
+            DetectionRadio.IsChecked = info.Kind == YoloKind.Detection;
+            SegmentationRadio.IsChecked = info.Kind == YoloKind.Segmentation;
+            StatusLabel.Text = info.Message;
         }
     }
 
@@ -184,6 +191,30 @@ public partial class AutoLabelDialog : Window
         bool  currentOnly = CurrentImageRadio.IsChecked == true;
         bool  isDetection = DetectionRadio.IsChecked == true;
 
+        try
+        {
+            YoloModelInspector.Require(modelPath, isDetection ? YoloKind.Detection : YoloKind.Segmentation);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, "Nem kompatibilis modell", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (currentOnly && document?.Image is null)
+        {
+            MessageBox.Show(this, "Nyiss meg egy képet az aktuális kép feldolgozásához.", "LabelForge",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        if (!currentOnly && datasetImagePaths.Count == 0)
+        {
+            MessageBox.Show(this, "Nincs betöltött dataset mappa.", "LabelForge",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         // Értékek megjegyzése AutoLabelSettings-be
         if (isDetection) AutoLabelSettings.DetectionModelPath    = modelPath;
         else             AutoLabelSettings.SegmentationModelPath = modelPath;
@@ -196,82 +227,142 @@ public partial class AutoLabelDialog : Window
         AutoLabelSettings.CurrentOnly = currentOnly;
 
         RunButton.IsEnabled = false;
+        CloseButton.IsEnabled = false;
+        DownloadButton.IsEnabled = false;
         StatusLabel.Text = "Mentés...";
 
         try
         {
             await AutoLabelSettings.SaveAsync();
+            var classNames = AutoLabelSettings.ClassNameList.ToList();
+
+            int resultCount;
+            if (currentOnly)
+            {
+                resultCount = await RunCurrentImageAsync(modelPath, conf, nms, maxDet,
+                    maskThreshold, polygonEpsilon, isDetection, classNames);
+            }
+            else
+            {
+                resultCount = await RunDatasetAsync(modelPath, conf, nms, maxDet,
+                    maskThreshold, polygonEpsilon, isDetection, classNames);
+            }
+
+            if (resultCount == 0)
+            {
+                StatusLabel.Text = "0 találat";
+                MessageBox.Show(this,
+                    "A modell sikeresen lefutott, de nem talált támogatott objektumot.\n\n" +
+                    "A gyári YOLO11 modellek 80 COCO osztályt ismernek; a pothole például nem része ennek. " +
+                    "Próbálj alacsonyabb bizonyossági küszöböt, vagy saját osztályokra tanított modellt.",
+                    "Nincs találat", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             DialogResult = true;
             Close();
         }
         catch (Exception ex)
         {
             StatusLabel.Text = string.Empty;
-            MessageBox.Show(this, $"AI beállítás mentési hiba:\n{ex.Message}",
+            MessageBox.Show(this, $"AI Auto-Label hiba:\n{BuildErrorMessage(ex, modelPath)}",
                 "AI Auto-Label", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
             RunButton.IsEnabled = true;
+            CloseButton.IsEnabled = true;
+            DownloadButton.IsEnabled = true;
         }
     }
 
-    // ── Detektálás ───────────────────────────────────────────────────────
-
-    private void RunDetection(string modelPath, float conf, float nms, int maxDet,
-        bool currentOnly, List<string> classNames)
+    private async Task<int> RunCurrentImageAsync(string modelPath, float conf, float nms, int maxDet,
+        float maskThreshold, double polygonEpsilon, bool isDetection, List<string> classNames)
     {
-        using var detector = new YoloV8Detector(modelPath);
+        var current = document ?? throw new InvalidOperationException("Nincs aktuális dokumentum.");
+        var imagePath = current.Image?.FilePath
+            ?? throw new InvalidOperationException("Nincs aktuális kép.");
 
-        if (currentOnly && document?.Image is not null)
+        StatusLabel.Text = "Feldolgozás...";
+        if (isDetection)
         {
-            Dispatcher.Invoke(() => StatusLabel.Text = "Feldolgozás…");
-            var bitmap  = LoadBitmap(document.Image.FilePath);
-            var results = detector.Detect(bitmap, conf, nms, maxDet);
-            Dispatcher.Invoke(() => ApplyDetections(document, results, classNames));
+            var results = await Task.Run(() =>
+            {
+                using var detector = new YoloV8Detector(modelPath);
+                var bitmap = LoadBitmap(imagePath);
+                return detector.Detect(bitmap, conf, nms, maxDet);
+            });
+
+            ReplaceSuggestions(current);
+            ApplyDetections(current, results, classNames);
+            StatusLabel.Text = $"Kész: {results.Count} találat.";
+            return results.Count;
         }
         else
         {
-            for (int i = 0; i < datasetImagePaths.Count; i++)
+            var results = await Task.Run(() =>
             {
-                int idx = i; string path = datasetImagePaths[i];
-                Dispatcher.Invoke(() =>
-                    StatusLabel.Text = $"{idx + 1}/{datasetImagePaths.Count}: {Path.GetFileName(path)}");
-                var bitmap  = LoadBitmap(path);
-                var results = detector.Detect(bitmap, conf, nms, maxDet);
-                var tmpDoc  = MakeTmpDoc(path, bitmap);
-                Dispatcher.Invoke(() => ApplyDetections(tmpDoc, results, classNames));
-            }
+                using var segmentor = new YoloV8Segmentor(modelPath);
+                var bitmap = LoadBitmap(imagePath);
+                return segmentor.Detect(bitmap, conf, nms, maxDet, maskThreshold, polygonEpsilon);
+            });
+
+            ReplaceSuggestions(current);
+            ApplySegmentations(current, results, classNames);
+            StatusLabel.Text = $"Kész: {results.Count} találat.";
+            return results.Count;
         }
     }
 
-    // ── Szegmentálás ─────────────────────────────────────────────────────
-
-    private void RunSegmentation(string modelPath, float conf, float nms, int maxDet,
-        bool currentOnly, List<string> classNames)
+    private async Task<int> RunDatasetAsync(string modelPath, float conf, float nms, int maxDet,
+        float maskThreshold, double polygonEpsilon, bool isDetection, List<string> classNames)
     {
-        using var segmentor = new YoloV8Segmentor(modelPath);
-
-        if (currentOnly && document?.Image is not null)
+        var totalResults = 0;
+        if (isDetection)
         {
-            Dispatcher.Invoke(() => StatusLabel.Text = "Feldolgozás…");
-            var bitmap  = LoadBitmap(document.Image.FilePath);
-            var results = segmentor.Detect(bitmap, conf, nms, maxDet);
-            Dispatcher.Invoke(() => ApplySegmentations(document, results, classNames));
+            using var detector = new YoloV8Detector(modelPath);
+            for (var i = 0; i < datasetImagePaths.Count; i++)
+            {
+                var idx = i;
+                var path = datasetImagePaths[i];
+                StatusLabel.Text = $"{idx + 1}/{datasetImagePaths.Count}: {Path.GetFileName(path)}";
+
+                await Task.Run(async () =>
+                {
+                    var bitmap = LoadBitmap(path);
+                    var doc = await LoadOrCreateDocumentAsync(path, bitmap);
+                    ReplaceSuggestions(doc);
+                    var results = detector.Detect(bitmap, conf, nms, maxDet);
+                    ApplyDetections(doc, results, classNames);
+                    Interlocked.Add(ref totalResults, results.Count);
+                    await SaveSidecarAsync(doc, path);
+                });
+            }
         }
         else
         {
-            for (int i = 0; i < datasetImagePaths.Count; i++)
+            using var segmentor = new YoloV8Segmentor(modelPath);
+            for (var i = 0; i < datasetImagePaths.Count; i++)
             {
-                int idx = i; string path = datasetImagePaths[i];
-                Dispatcher.Invoke(() =>
-                    StatusLabel.Text = $"{idx + 1}/{datasetImagePaths.Count}: {Path.GetFileName(path)}");
-                var bitmap  = LoadBitmap(path);
-                var results = segmentor.Detect(bitmap, conf, nms, maxDet);
-                var tmpDoc  = MakeTmpDoc(path, bitmap);
-                Dispatcher.Invoke(() => ApplySegmentations(tmpDoc, results, classNames));
+                var idx = i;
+                var path = datasetImagePaths[i];
+                StatusLabel.Text = $"{idx + 1}/{datasetImagePaths.Count}: {Path.GetFileName(path)}";
+
+                await Task.Run(async () =>
+                {
+                    var bitmap = LoadBitmap(path);
+                    var doc = await LoadOrCreateDocumentAsync(path, bitmap);
+                    ReplaceSuggestions(doc);
+                    var results = segmentor.Detect(bitmap, conf, nms, maxDet, maskThreshold, polygonEpsilon);
+                    ApplySegmentations(doc, results, classNames);
+                    Interlocked.Add(ref totalResults, results.Count);
+                    await SaveSidecarAsync(doc, path);
+                });
             }
         }
+
+        StatusLabel.Text = $"{datasetImagePaths.Count} kép, {totalResults} találat.";
+        return totalResults;
     }
 
     // ── ApplySuggestions ─────────────────────────────────────────────────
@@ -325,8 +416,35 @@ public partial class AutoLabelDialog : Window
     private static string ClassLabel(int id, IReadOnlyList<string> names) =>
         id < names.Count ? names[id] : $"class_{id}";
 
-    private static ImageDocument MakeTmpDoc(string path, BitmapSource bitmap) =>
-        new() { Image = new ImageInfo(path, bitmap.PixelWidth, bitmap.PixelHeight) };
+    private static void ReplaceSuggestions(ImageDocument doc)
+    {
+        var suggestions = doc.Annotations.Where(a => a.IsSuggestion).ToList();
+        foreach (var suggestion in suggestions)
+            doc.Annotations.Remove(suggestion);
+    }
+
+    private async Task<ImageDocument> LoadOrCreateDocumentAsync(string imagePath, BitmapSource bitmap)
+    {
+        var jsonPath = Path.ChangeExtension(imagePath, ".json");
+        ImageDocument doc;
+        if (File.Exists(jsonPath))
+        {
+            doc = await annotationStore.LoadAsync(jsonPath);
+        }
+        else
+        {
+            doc = new ImageDocument();
+        }
+
+        doc.Image = new ImageInfo(imagePath, bitmap.PixelWidth, bitmap.PixelHeight);
+        return doc;
+    }
+
+    private async Task SaveSidecarAsync(ImageDocument doc, string imagePath)
+    {
+        var jsonPath = Path.ChangeExtension(imagePath, ".json");
+        await annotationStore.SaveAsync(doc, jsonPath);
+    }
 
     private static BitmapSource LoadBitmap(string path)
     {
@@ -347,7 +465,7 @@ public partial class AutoLabelDialog : Window
              msg.Contains("not found") || msg.Contains("cannot find")))
         {
             return $"A modell külső súlyfájlt igényel:\n{modelPath}.data\n\n" +
-                   "Másold a .onnx.data fájlt a .onnx mellé.\n\nHiba: {msg}";
+                   $"Másold a .onnx.data fájlt a .onnx mellé.\n\nHiba: {msg}";
         }
         return msg;
     }
