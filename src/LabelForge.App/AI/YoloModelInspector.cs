@@ -1,4 +1,6 @@
 using Microsoft.ML.OnnxRuntime;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace LabelForge.App.AI;
 
@@ -37,6 +39,29 @@ public static class YoloModelInspector
         if (info.Kind != expected)
             throw new InvalidOperationException($"A modell típusa {Name(info.Kind)}, a kiválasztott művelet viszont {Name(expected)}.");
         return info;
+    }
+
+    public static IReadOnlyList<string> TryReadClassNames(string modelPath)
+    {
+        try
+        {
+            using var session = new InferenceSession(modelPath);
+            var metadata = session.ModelMetadata.CustomMetadataMap;
+            if (!metadata.TryGetValue("names", out var names) || string.IsNullOrWhiteSpace(names)) return [];
+            try
+            {
+                using var json = JsonDocument.Parse(names.Replace('\'', '"'));
+                if (json.RootElement.ValueKind == JsonValueKind.Array)
+                    return json.RootElement.EnumerateArray().Select(x => x.GetString() ?? string.Empty).ToArray();
+                if (json.RootElement.ValueKind == JsonValueKind.Object)
+                    return json.RootElement.EnumerateObject().OrderBy(x => int.TryParse(x.Name, out var id) ? id : int.MaxValue)
+                        .Select(x => x.Value.GetString() ?? x.Value.ToString()).ToArray();
+            }
+            catch (JsonException) { }
+            return Regex.Matches(names, "\\d+\\s*:\\s*['\\\"]?([^,'\\\"}]+)")
+                .Select(match => match.Groups[1].Value.Trim()).ToArray();
+        }
+        catch { return []; }
     }
 
     private static YoloModelInfo Invalid(string message) => new(YoloKind.Detection, string.Empty, [], [], false, message);

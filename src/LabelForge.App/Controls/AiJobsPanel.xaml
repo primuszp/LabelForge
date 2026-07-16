@@ -1,0 +1,16 @@
+<UserControl x:Class="LabelForge.App.Controls.AiJobsPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ListBox x:Name="JobList" BorderThickness="0" Background="Transparent">
+        <ListBox.ItemTemplate>
+            <DataTemplate>
+                <Grid Margin="6">
+                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                    <ProgressBar Grid.Row="1" Height="4" Margin="0,5" Maximum="1" Value="{Binding Progress}"/>
+                    <TextBlock Grid.Row="2" Text="{Binding Status}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
+                </Grid>
+            </DataTemplate>
+        </ListBox.ItemTemplate>
+    </ListBox>
+</UserControl>

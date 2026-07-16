@@ -6,6 +6,7 @@ public sealed class ProjectFile
     public string Name { get; set; } = "Névtelen projekt";
     public string? DatasetFolder { get; set; }
     public List<ProjectLabelClass> LabelClasses { get; set; } = [];
+    public Dictionary<string, Dictionary<string, string?>> ModelLabelMappings { get; set; } = [];
 }
 
 public sealed class ProjectLabelClass

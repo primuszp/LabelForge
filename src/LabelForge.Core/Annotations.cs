@@ -13,6 +13,11 @@ public enum AnnotationShapeKind
     Line
 }
 
+public enum AnnotationWorkflowStatus { Pending, AiGenerated, Reviewed, Approved, Rejected }
+public enum AnnotationSourceKind { Original, Yolo, Sam3, Manual }
+public enum DatasetSplit { Unassigned, Train, Validation, Test }
+public enum ImageQualityStatus { Usable, Empty, Unreadable, NeedsReview, Excluded }
+
 public abstract class AnnotationShape
 {
     public abstract AnnotationShapeKind Kind { get; }
@@ -193,6 +198,14 @@ public sealed class Annotation : INotifyPropertyChanged
 
     /// <summary>AI által javasolt annotáció – még nem fogadta el a felhasználó.</summary>
     public bool IsSuggestion { get; set; }
+    public AnnotationWorkflowStatus WorkflowStatus { get; set; } = AnnotationWorkflowStatus.Pending;
+    public AnnotationSourceKind Source { get; set; } = AnnotationSourceKind.Original;
+    public Guid? ParentAnnotationId { get; set; }
+    public int Revision { get; set; } = 1;
+    public string? Reviewer { get; set; }
+    public DateTimeOffset? ReviewedAt { get; set; }
+    public string? ModelName { get; set; }
+    public string? ModelVersion { get; set; }
 
     public override string ToString() => $"{Label} ({Shape.Kind})";
 
@@ -210,4 +223,10 @@ public sealed class ImageDocument
 
     public string? AnnotationFilePath { get; set; }
     public bool IsDirty { get; set; }
+    public AnnotationWorkflowStatus WorkflowStatus { get; set; } = AnnotationWorkflowStatus.Pending;
+    public DatasetSplit Split { get; set; } = DatasetSplit.Unassigned;
+    public ImageQualityStatus QualityStatus { get; set; } = ImageQualityStatus.Usable;
+    public DateTimeOffset? CaptureDate { get; set; }
+    public string? Reviewer { get; set; }
+    public DateTimeOffset? ReviewedAt { get; set; }
 }

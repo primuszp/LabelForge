@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Controls.Primitives;
 using LabelForge.App.Dialogs;
 using LabelForge.App.Localization;
 using LabelForge.App.Services;
@@ -19,16 +20,27 @@ namespace LabelForge.App;
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
     private readonly LabelMeAnnotationStore annotationStore = new();
+    private readonly HawkwoodAnnotationStore hawkwoodAnnotationStore = new();
+    private CocoDatasetStore? activeCocoDataset;
+    private readonly AnnotationStorePluginRegistry storePluginRegistry = AnnotationStorePluginRegistry.CreateDefault();
     private readonly LabelClassService labelService = new();
     private readonly DatasetViewModel datasetViewModel = new();
     private readonly ProjectService projectService = new();
+    private readonly LabelMappingService labelMappingService;
+    private readonly AiJobService aiJobService = new();
+    private LabelForge.App.AI.Sam3OnnxSegmentor? sam3Segmentor;
+    private string? sam3ModelDirectory;
     private readonly SemaphoreSlim navigationGate = new(1, 1);
     private ImageDocument document = new();
+    private IAnnotationStorePlugin? activeImportPlugin;
+    private IAnnotationStorePlugin? currentDocumentPlugin;
     private string activeLabelName = "object";
     private string activeLabelColor = "#22c55e";
+    private List<Annotation> annotationClipboard = [];
 
     public MainWindow()
     {
+        labelMappingService = new LabelMappingService(projectService, labelService);
         InitializeComponent();
         DataContext = this;
 
@@ -37,7 +49,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         AnnotationCanvas.MouseMove += OnAnnotationCanvasMouseMove;
 
         DatasetBrowser.SetViewModel(datasetViewModel);
+        AiJobsPanel.SetService(aiJobService);
         DatasetBrowser.ImageSelected += OnDatasetImageSelected;
+        DatasetBrowser.FolderOpenRequested += path => _ = OpenDatasetFolderAsync(path);
         datasetViewModel.ImageNavigated += OnDatasetImageNavigated;
 
         LabelPanel.SetService(labelService);
@@ -45,6 +59,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         AnnotationInspector.DeleteSelectedRequested += (_, _) => AnnotationCanvas.DeleteSelected();
 
         ImageMetadataPanel.AttributeChanged += (_, _) => UpdateTitle();
+        ReviewPanel.ReviewChanged += (_, _) =>
+        {
+            ReviewPanel.ApplyTo(Document);
+            UpdateTitle();
+        };
         projectService.ProjectChanged += (_, _) => OnProjectChanged();
 
         LabelPanel.VisualSettingsChanged += (_, _) => AnnotationCanvas.InvalidateVisual();
@@ -85,6 +104,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             OnPropertyChanged();
             AnnotationInspector.SetAnnotations(document.Annotations, () => AnnotationCanvas.InvalidateVisual());
             ImageMetadataPanel.SetDocument(document);
+            ReviewPanel.SetDocument(document);
             document.Annotations.CollectionChanged += (_, _) =>
             {
                 LabelPanel.RefreshCounts(document.Annotations);
@@ -115,7 +135,77 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public ICommand UndoCommand => new RelayCommand(_ => AnnotationCanvas.Undo());
     public ICommand RedoCommand => new RelayCommand(_ => AnnotationCanvas.Redo());
     public ICommand SelectAllCommand => new RelayCommand(_ => AnnotationCanvas.SelectAll());
+    public ICommand CopyAnnotationsCommand => new RelayCommand(_ => CopySelectedAnnotations());
+    public ICommand PasteAnnotationsCommand => new RelayCommand(_ => PasteAnnotations());
     public ICommand DeleteSelectedCommand => new RelayCommand(_ => AnnotationCanvas.DeleteSelected());
+
+    private void CopyAnnotationsOnClick(object sender, RoutedEventArgs e) => CopySelectedAnnotations();
+    private void PasteAnnotationsOnClick(object sender, RoutedEventArgs e) => PasteAnnotations();
+
+    private void CopySelectedAnnotations()
+    {
+        if (Keyboard.FocusedElement is TextBoxBase) return;
+        annotationClipboard = Document.Annotations.Where(annotation => annotation.IsSelected)
+            .Select(CloneForClipboard).ToList();
+    }
+
+    private void PasteAnnotations()
+    {
+        if (Keyboard.FocusedElement is TextBoxBase || Document.Image is null || annotationClipboard.Count == 0) return;
+        AnnotationCanvas.PasteAnnotations(annotationClipboard.Select(CloneForPaste));
+        AnnotationInspector.Refresh();
+        StatusBar.SetAnnotationCount(Document.Annotations.Count);
+        UpdateTitle();
+    }
+
+    private static Annotation CloneForClipboard(Annotation source) => CloneAnnotation(source, source.Id);
+
+    private static Annotation CloneForPaste(Annotation source) => CloneAnnotation(source, source.Id, createNewIdentity: true);
+
+    private static Annotation CloneAnnotation(Annotation source, Guid parentId, bool createNewIdentity = false)
+    {
+        var clone = new Annotation
+        {
+            Label = source.Label, Color = source.Color, IsVisible = source.IsVisible,
+            Occluded = source.Occluded, Truncated = source.Truncated, Crowd = source.Crowd,
+            Confidence = source.Confidence, Shape = CloneShape(source.Shape),
+            IsSuggestion = false, Source = createNewIdentity ? AnnotationSourceKind.Manual : source.Source,
+            WorkflowStatus = createNewIdentity ? AnnotationWorkflowStatus.Pending : source.WorkflowStatus,
+            ParentAnnotationId = createNewIdentity ? parentId : source.ParentAnnotationId,
+            Revision = 1, ModelName = source.ModelName, ModelVersion = source.ModelVersion
+        };
+        foreach (var (key, value) in source.Attributes)
+            if (!key.StartsWith("coco", StringComparison.OrdinalIgnoreCase)) clone.Attributes[key] = value;
+        return clone;
+    }
+
+    private static AnnotationShape CloneShape(AnnotationShape shape) => shape switch
+    {
+        RectangleShape rectangle => new RectangleShape { X = rectangle.X, Y = rectangle.Y, Width = rectangle.Width, Height = rectangle.Height },
+        EllipseShape ellipse => new EllipseShape { X = ellipse.X, Y = ellipse.Y, Width = ellipse.Width, Height = ellipse.Height, RadiusPoint = ellipse.RadiusPoint },
+        PointShape point => new PointShape { Point = point.Point },
+        PolygonShape polygon => CopyVertices(new PolygonShape(), polygon.Vertices),
+        LineShape line => CopyVertices(new LineShape(), line.Vertices),
+        _ => throw new NotSupportedException($"Nem tamogatott alakzat: {shape.GetType().Name}")
+    };
+
+    private static T CopyVertices<T>(T target, IEnumerable<Point2D> vertices) where T : AnnotationShape
+    {
+        if (target is PolygonShape polygon) foreach (var point in vertices) polygon.Vertices.Add(point);
+        if (target is LineShape line) foreach (var point in vertices) line.Vertices.Add(point);
+        return target;
+    }
+    public ICommand PendingStatusCommand => new RelayCommand(_ => SetReviewStatus(AnnotationWorkflowStatus.Pending));
+    public ICommand ReviewedStatusCommand => new RelayCommand(_ => SetReviewStatus(AnnotationWorkflowStatus.Reviewed));
+    public ICommand ApprovedStatusCommand => new RelayCommand(_ => SetReviewStatus(AnnotationWorkflowStatus.Approved));
+    public ICommand RejectedStatusCommand => new RelayCommand(_ => SetReviewStatus(AnnotationWorkflowStatus.Rejected));
+
+    private void SetReviewStatus(AnnotationWorkflowStatus status)
+    {
+        ReviewPanel.SetStatus(status);
+        ReviewPanel.ApplyTo(Document);
+        UpdateTitle();
+    }
 
     private void LanguageOnClick(object sender, RoutedEventArgs e)
     {
@@ -230,11 +320,98 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void OpenImageOnClick(object sender, RoutedEventArgs e) => OpenImage();
 
-    private void OpenFolderOnClick(object sender, RoutedEventArgs e)
+    private async void OpenFolderOnClick(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog { Title = "Select dataset folder" };
         if (dialog.ShowDialog(this) == true)
-            datasetViewModel.LoadFolder(dialog.FolderName);
+        {
+            await OpenDatasetFolderAsync(dialog.FolderName);
+        }
+    }
+
+    private async Task OpenDatasetFolderAsync(string folderPath)
+    {
+        var plugin = storePluginRegistry.DetectForFolder(folderPath);
+        if (plugin is null)
+        {
+            activeCocoDataset = null;
+            activeImportPlugin = null;
+            datasetViewModel.LoadFolder(folderPath);
+            return;
+        }
+
+        activeCocoDataset = null;
+        activeImportPlugin = plugin;
+        var progress = new ImportProgressDialog(this);
+        progress.Show();
+        try
+        {
+            await datasetViewModel.LoadFolderAsync(folderPath, plugin, progress);
+        }
+        finally
+        {
+            progress.Close();
+        }
+    }
+
+    private async void ImportOnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ImportDialog(storePluginRegistry.Plugins, this);
+        if (dialog.ShowDialog() != true || dialog.SelectedPlugin is null)
+        {
+            return;
+        }
+
+        activeCocoDataset = null;
+        activeImportPlugin = dialog.SelectedPlugin;
+        var progress = new ImportProgressDialog(this);
+        progress.Show();
+        try
+        {
+            await datasetViewModel.LoadFolderAsync(dialog.SelectedFolder, activeImportPlugin, progress);
+        }
+        finally
+        {
+            progress.Close();
+        }
+    }
+
+    private async void OpenDatasetOnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "COCO dataset|*.json|Minden fájl|*.*",
+            Title = "COCO dataset megnyitása"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        var progress = new ImportProgressDialog(this);
+        progress.Show();
+        try
+        {
+            var store = new CocoDatasetStore();
+            await store.OpenAsync(dialog.FileName, progress);
+            activeCocoDataset?.Dispose();
+            activeCocoDataset = store;
+            activeImportPlugin = store;
+            labelService.ReplaceWith(store.CategoryNames);
+            LabelPanel.RefreshCounts([]);
+            if (labelService.ActiveClass is { } activeClass)
+            {
+                LabelPanel.SelectLabel(activeClass);
+                OnActiveLabelChanged(this, activeClass);
+            }
+            if (store.Index is null) throw new InvalidOperationException("A dataset index nem jott letre.");
+            await datasetViewModel.LoadIndexedDatasetAsync(dialog.FileName, store.Index);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "COCO dataset", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            progress.Close();
+        }
     }
 
     private async void OpenJsonOnClick(object sender, RoutedEventArgs e)
@@ -255,6 +432,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         LoadImage(imagePath, loaded);
         loaded.AnnotationFilePath = dialog.FileName;
         loaded.IsDirty = false;
+        currentDocumentPlugin = storePluginRegistry.FindById("labelme");
         UpdateTitle();
     }
 
@@ -332,6 +510,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         OpenAutoLabelDialog(preselect: null);
     }
 
+    private void LabelMappingOnClick(object sender, RoutedEventArgs e)
+    {
+        var profiles = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(LabelForge.App.AI.AutoLabelSettings.DetectionModelPath))
+            profiles[MappingProfile(LabelForge.App.AI.AutoLabelSettings.DetectionModelPath)] = LabelForge.App.AI.AutoLabelSettings.ClassNameList;
+        if (!string.IsNullOrWhiteSpace(LabelForge.App.AI.AutoLabelSettings.SegmentationModelPath))
+            profiles[MappingProfile(LabelForge.App.AI.AutoLabelSettings.SegmentationModelPath)] = LabelForge.App.AI.AutoLabelSettings.ClassNameList;
+        profiles["sam3"] = LabelForge.App.AI.AutoLabelSettings.Sam3Prompts
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        new LabelMappingDialog(labelMappingService, profiles, this).ShowDialog();
+    }
+
+    private static string MappingProfile(string modelPath) => "yolo:" + Path.GetFileName(modelPath).ToLowerInvariant();
+
     private void QuickDetectOnClick(object sender, RoutedEventArgs e)
     {
         if (LabelForge.App.AI.AutoLabelSettings.DetectionReady)
@@ -377,6 +569,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (Document.Image is null) return;
 
+        var useSam3 = !isDetection && LabelForge.App.AI.AutoLabelSettings.SegmentationProvider == "SAM3";
+
         var model   = isDetection
             ? LabelForge.App.AI.AutoLabelSettings.DetectionModelPath
             : LabelForge.App.AI.AutoLabelSettings.SegmentationModelPath;
@@ -411,19 +605,39 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 });
                 foreach (var r in results)
                 {
-                    Document.Annotations.Add(new Annotation
+                    var sourceLabel = r.ClassId < classes.Count ? classes[r.ClassId] : $"class_{r.ClassId}";
+                    var projectLabel = labelMappingService.Resolve(MappingProfile(model), sourceLabel);
+                    if (projectLabel is null) continue;
+                    var annotation = new Annotation
                     {
-                        Label      = r.ClassId < classes.Count ? classes[r.ClassId] : $"class_{r.ClassId}",
+                        Label = projectLabel,
+                        Color = ProjectLabelColor(projectLabel),
                         Confidence = r.Confidence,
                         IsSuggestion = true,
+                        WorkflowStatus = AnnotationWorkflowStatus.AiGenerated,
+                        Source = AnnotationSourceKind.Yolo,
+                        ModelName = Path.GetFileName(model),
                         Shape      = new RectangleShape { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }
-                    });
+                    };
+                    annotation.Attributes["ai.source_label"] = sourceLabel;
+                    annotation.Attributes["ai.mapping_profile"] = MappingProfile(model);
+                    Document.Annotations.Add(annotation);
                 }
             }
             else
             {
+                var segmentClasses = useSam3
+                    ? LabelForge.App.AI.AutoLabelSettings.Sam3Prompts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    : classes.ToArray();
                 var results = await Task.Run(() =>
                 {
+                    if (useSam3)
+                    {
+                        var sam3 = GetSam3Segmentor();
+                        return sam3.Detect(bitmap, segmentClasses,
+                            LabelForge.App.AI.AutoLabelSettings.Confidence,
+                            Math.Min(0.20, LabelForge.App.AI.AutoLabelSettings.SegmentationPolygonEpsilon)).ToList();
+                    }
                     using var seg = new LabelForge.App.AI.YoloV8Segmentor(model);
                     return seg.Detect(bitmap,
                         LabelForge.App.AI.AutoLabelSettings.Confidence,
@@ -434,6 +648,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 });
                 foreach (var r in results)
                 {
+                    var sourceLabel = r.ClassId < segmentClasses.Length ? segmentClasses[r.ClassId] : $"class_{r.ClassId}";
+                    var mappingProfile = useSam3 ? "sam3" : MappingProfile(model);
+                    var projectLabel = labelMappingService.Resolve(mappingProfile, sourceLabel);
+                    if (projectLabel is null) continue;
                     LabelForge.Core.AnnotationShape shape;
                     if (r.Polygon.Count >= 3)
                     {
@@ -445,16 +663,27 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     {
                         shape = new RectangleShape { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height };
                     }
-                    Document.Annotations.Add(new Annotation
+                    var annotation = new Annotation
                     {
-                        Label      = r.ClassId < classes.Count ? classes[r.ClassId] : $"class_{r.ClassId}",
+                        Label = projectLabel,
+                        Color = ProjectLabelColor(projectLabel),
                         Confidence = r.Confidence,
                         IsSuggestion = true,
+                        WorkflowStatus = AnnotationWorkflowStatus.AiGenerated,
+                        Source = useSam3 ? AnnotationSourceKind.Sam3 : AnnotationSourceKind.Yolo,
+                        ModelName = useSam3
+                            ? $"SAM3 ONNX ({(sam3Segmentor?.UsesGpu == true ? "CUDA" : "CPU")})"
+                            : Path.GetFileName(model),
                         Shape      = shape
-                    });
+                    };
+                    annotation.Attributes["ai.source_label"] = sourceLabel;
+                    annotation.Attributes["ai.mapping_profile"] = mappingProfile;
+                    Document.Annotations.Add(annotation);
                 }
             }
 
+            Document.WorkflowStatus = AnnotationWorkflowStatus.AiGenerated;
+            ReviewPanel.SetDocument(Document);
             Document.IsDirty = true;
             AnnotationCanvas.InvalidateVisual();
             AnnotationInspector.Refresh();
@@ -469,6 +698,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             UpdateQuickAiButtons();
         }
     }
+
+    private LabelForge.App.AI.Sam3OnnxSegmentor GetSam3Segmentor()
+    {
+        var directory = LabelForge.App.AI.AutoLabelSettings.Sam3ModelDirectory;
+        if (sam3Segmentor is not null && string.Equals(sam3ModelDirectory, directory, StringComparison.OrdinalIgnoreCase))
+            return sam3Segmentor;
+        sam3Segmentor?.Dispose();
+        sam3Segmentor = new LabelForge.App.AI.Sam3OnnxSegmentor(directory);
+        sam3ModelDirectory = directory;
+        return sam3Segmentor;
+    }
+
+    private string ProjectLabelColor(string label) => labelService.Classes
+        .FirstOrDefault(item => string.Equals(item.Name, label, StringComparison.OrdinalIgnoreCase))?.ColorHex ?? ActiveLabelColor;
 
     private void AcceptAllSuggestionsOnClick(object sender, RoutedEventArgs e)
     {
@@ -586,7 +829,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Filter = "Images|*.jpg;*.jpeg;*.png;*.bmp;*.tif;*.tiff|All files|*.*"
         };
         if (dialog.ShowDialog(this) == true)
+        {
+            activeCocoDataset = null;
+            activeImportPlugin = null;
             _ = LoadImageFromEntryAsync(new DatasetImageEntry { FilePath = dialog.FileName });
+        }
     }
 
     private async Task LoadImageFromEntryAsync(DatasetImageEntry entry)
@@ -678,7 +925,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void WindowOnClosing(object? sender, CancelEventArgs e)
     {
-        if (Document.IsDirty)
+        if (Document.IsDirty || activeCocoDataset?.IsDirty == true)
         {
             var result = MessageBox.Show(this,
                 "There are unsaved changes. Save before closing?", "LabelForge",
@@ -700,6 +947,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         await labelService.SaveAsync();
+        activeCocoDataset?.Dispose();
+        await aiJobService.DisposeAsync();
+        sam3Segmentor?.Dispose();
     }
 
     // ── Internal helpers ──
@@ -724,6 +974,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         AnnotationCanvas.Height = bitmap.PixelHeight;
         targetDocument.Image = new ImageInfo(imagePath, bitmap.PixelWidth, bitmap.PixelHeight);
         Document = targetDocument;
+        currentDocumentPlugin = null;
         MiniMap.SetImage(bitmap);
         EmptyState.Visibility = Visibility.Collapsed;
         UpdateQuickAiButtons();
@@ -734,14 +985,46 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async Task TryLoadSidecarAsync(string imagePath)
     {
-        var jsonPath = Path.ChangeExtension(imagePath, ".json");
-        if (!File.Exists(jsonPath)) return;
+        if (activeImportPlugin is not null)
+        {
+            var imported = await activeImportPlugin.LoadAsync(imagePath);
+            if (imported is not null)
+            {
+                LoadImage(imagePath, imported);
+                currentDocumentPlugin = activeImportPlugin;
+                imported.IsDirty = false;
+                UpdateTitle();
+            }
 
-        var loaded = await annotationStore.LoadAsync(jsonPath);
-        LoadImage(imagePath, loaded);
-        loaded.AnnotationFilePath = jsonPath;
-        loaded.IsDirty = false;
-        UpdateTitle();
+            return;
+        }
+
+        var jsonPath = Path.ChangeExtension(imagePath, ".json");
+        if (File.Exists(jsonPath))
+        {
+            var loaded = await annotationStore.LoadAsync(jsonPath);
+            LoadImage(imagePath, loaded);
+            loaded.AnnotationFilePath = jsonPath;
+            loaded.IsDirty = false;
+            currentDocumentPlugin = storePluginRegistry.FindById("labelme");
+            UpdateTitle();
+            return;
+        }
+
+        if (hawkwoodAnnotationStore.HasSidecars(imagePath))
+        {
+            var loaded = await hawkwoodAnnotationStore.LoadAsync(imagePath);
+            if (loaded is null)
+            {
+                return;
+            }
+
+            LoadImage(imagePath, loaded);
+            loaded.AnnotationFilePath = imagePath;
+            loaded.IsDirty = false;
+            currentDocumentPlugin = storePluginRegistry.FindById("hawkwood");
+            UpdateTitle();
+        }
     }
 
     private void FitImageToWindow()
@@ -763,7 +1046,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        await annotationStore.SaveAsync(Document, Document.AnnotationFilePath);
+        if (currentDocumentPlugin is not null)
+        {
+            await currentDocumentPlugin.SaveAsync(Document);
+        }
+        else if (IsHawkwoodDocument(Document))
+        {
+            await hawkwoodAnnotationStore.SaveAsync(Document);
+        }
+        else
+        {
+            await annotationStore.SaveAsync(Document, Document.AnnotationFilePath);
+        }
+
+        if (activeCocoDataset is not null)
+        {
+            await activeCocoDataset.FlushAsync();
+        }
+
         datasetViewModel.RefreshAnnotationState(Document.Image?.FilePath ?? string.Empty);
         Document.IsDirty = false;
         UpdateTitle();
@@ -790,6 +1090,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             await annotationStore.SaveAsync(Document, dialog.FileName);
             Document.AnnotationFilePath = dialog.FileName;
+            currentDocumentPlugin = storePluginRegistry.FindById("labelme");
             datasetViewModel.RefreshAnnotationState(Document.Image.FilePath);
             Document.IsDirty = false;
             UpdateTitle();
@@ -800,12 +1101,28 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (Document.IsDirty && Document.AnnotationFilePath is not null)
         {
-            await annotationStore.SaveAsync(Document, Document.AnnotationFilePath);
+            if (currentDocumentPlugin is not null)
+            {
+                await currentDocumentPlugin.SaveAsync(Document);
+            }
+            else if (IsHawkwoodDocument(Document))
+            {
+                await hawkwoodAnnotationStore.SaveAsync(Document);
+            }
+            else
+            {
+                await annotationStore.SaveAsync(Document, Document.AnnotationFilePath);
+            }
+
             Document.IsDirty = false;
             datasetViewModel.RefreshAnnotationState(Document.Image?.FilePath ?? string.Empty);
             UpdateTitle();
         }
     }
+
+    private static bool IsHawkwoodDocument(ImageDocument document) =>
+        document.Attributes.TryGetValue("source_format", out var sourceFormat)
+        && string.Equals(sourceFormat, "HAWKwood", StringComparison.OrdinalIgnoreCase);
 
     private void UpdateTitle()
     {

@@ -69,6 +69,19 @@
             </StackPanel>
         </Border>
 
+        <TextBlock Text="SZEGMENTACIOS SZOLGALTATO" Style="{StaticResource SectionLabel}"/>
+        <Grid Margin="0,0,0,16">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <ComboBox x:Name="SegmentationProviderBox" SelectionChanged="SegmentationProviderOnChanged">
+                <ComboBoxItem Content="YOLO ONNX" Tag="YOLO" IsSelected="True"/>
+                <ComboBoxItem Content="SAM3 API" Tag="SAM3"/>
+            </ComboBox>
+            <StackPanel x:Name="Sam3SettingsPanel" Grid.Column="1" Margin="8,0,0,0" Visibility="Collapsed">
+                <TextBox x:Name="Sam3EndpointBox" Padding="6,4" ToolTip="SAM3 ONNX modellkonyvtar"/>
+                <TextBox x:Name="Sam3PromptsBox" Padding="6,4" Margin="0,5,0,0" ToolTip="Promptok vesszovel elvalasztva"/>
+            </StackPanel>
+        </Grid>
+
         <!-- ══ MODELL FÁJL ═══════════════════════════════════════════════════ -->
         <TextBlock Text="LETOLTOTT MODELLEK" Style="{StaticResource SectionLabel}"/>
         <ComboBox x:Name="DownloadedModelCombo"
@@ -227,8 +240,8 @@
                                               Path=Value, StringFormat={}{0:0.0}}"/>
                         </Grid>
                         <Slider x:Name="PolygonEpsilonSlider"
-                                Minimum="0.5" Maximum="8.0" Value="2.0"
-                                TickFrequency="0.5" IsSnapToTickEnabled="True"/>
+                                Minimum="0.05" Maximum="3.0" Value="0.20"
+                                TickFrequency="0.05" IsSnapToTickEnabled="True"/>
                     </StackPanel>
                 </Grid>
             </StackPanel>
@@ -280,11 +293,11 @@
                            TextTrimming="CharacterEllipsis"/>
                 <Button Grid.Column="2"
                         x:Name="RunButton"
-                        Content="Futtat"
+                        Content="Mentes"
                         Style="{StaticResource AccentButtonStyle}"
                         Padding="18,7"
                         IsDefault="True"
-                        Click="RunOnClick"/>
+                        Click="SaveSettingsOnClick"/>
                 <Button Grid.Column="4"
                         x:Name="CloseButton"
                         Content="Bezár"

@@ -39,6 +39,28 @@
             </Grid>
         </Border>
 
+        <Border DockPanel.Dock="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Padding="8,6">
+            <StackPanel>
+                <TextBox x:Name="SearchBox" Height="26" Padding="6,3" FontSize="11"
+                         ToolTip="Kereses fajlnev alapjan" TextChanged="FilterOnChanged"/>
+                <Grid Margin="0,5,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/><ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="MonthFilter" Height="24" FontSize="10" SelectionChanged="FilterOnChanged"/>
+                    <ComboBox x:Name="StatusFilter" Grid.Column="1" Height="24" Margin="4,0,0,0" FontSize="10"
+                              SelectionChanged="FilterOnChanged">
+                        <ComboBoxItem Content="Minden statusz" Tag="" IsSelected="True"/>
+                        <ComboBoxItem Content="Fuggoben" Tag="Pending"/>
+                        <ComboBoxItem Content="AI javaslat" Tag="AiGenerated"/>
+                        <ComboBoxItem Content="Ellenorzott" Tag="Reviewed"/>
+                        <ComboBoxItem Content="Jovahagyott" Tag="Approved"/>
+                        <ComboBoxItem Content="Elutasitott" Tag="Rejected"/>
+                    </ComboBox>
+                </Grid>
+            </StackPanel>
+        </Border>
+
         <!-- Navigation bar -->
         <Border DockPanel.Dock="Bottom"
                 BorderBrush="{StaticResource BorderBrush}"
@@ -49,6 +71,7 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
@@ -76,7 +99,10 @@
                            Foreground="{StaticResource TextSecondaryBrush}"
                            Text="—"/>
 
-                <Button Grid.Column="2"
+                <Button Grid.Column="2" x:Name="LoadMoreButton" Content="+500" Margin="3,0"
+                        Height="26" Padding="6,0" ToolTip="Tovabbi kepek betoltese" Click="LoadMoreOnClick"/>
+
+                <Button Grid.Column="3"
                         x:Name="NextButton"
                         Style="{StaticResource IconButtonStyle}"
                         Width="26" Height="26"
@@ -120,12 +146,107 @@
                  Background="Transparent"
                  SelectionChanged="ImageListOnSelectionChanged"
                  VirtualizingPanel.IsVirtualizing="True"
-                 VirtualizingPanel.VirtualizationMode="Recycling">
+                 VirtualizingPanel.IsVirtualizingWhenGrouping="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling"
+                 VirtualizingPanel.ScrollUnit="Pixel"
+                 VirtualizingPanel.CacheLength="1,1"
+                 VirtualizingPanel.CacheLengthUnit="Page"
+                 ScrollViewer.CanContentScroll="True">
+            <ListBox.GroupStyle>
+                <GroupStyle>
+                    <GroupStyle.ContainerStyle>
+                        <Style TargetType="{x:Type GroupItem}">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="{x:Type GroupItem}">
+                                        <Expander x:Name="GroupExpander" IsExpanded="False" Margin="0,1,0,2">
+                                            <Expander.Template>
+                                                <ControlTemplate TargetType="{x:Type Expander}">
+                                                    <DockPanel>
+                                                        <ToggleButton DockPanel.Dock="Top"
+                                                                      IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
+                                                                      Content="{TemplateBinding Header}"
+                                                                      Background="Transparent" BorderThickness="0"
+                                                                      HorizontalContentAlignment="Stretch">
+                                                            <ToggleButton.Template>
+                                                                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                                                                    <Border x:Name="HeaderBackground" Background="Transparent"
+                                                                            Padding="2" CornerRadius="3">
+                                                                        <ContentPresenter HorizontalAlignment="Stretch"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="HeaderBackground" Property="Background"
+                                                                                    Value="{StaticResource SurfaceBgBrush}"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </ToggleButton.Template>
+                                                        </ToggleButton>
+                                                        <ContentPresenter x:Name="ExpandedContent" Visibility="Collapsed"
+                                                                          ContentSource="Content"/>
+                                                    </DockPanel>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsExpanded" Value="True">
+                                                            <Setter TargetName="ExpandedContent" Property="Visibility" Value="Visible"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Expander.Template>
+                                            <Expander.Header>
+                                                <Grid Margin="0,3,4,3">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="22"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Width="18" Height="18" CornerRadius="3"
+                                                            Background="{StaticResource SurfaceBgBrush}">
+                                                        <Path Data="M5,3 L10,8 L5,13" Stroke="{StaticResource TextSecondaryBrush}"
+                                                              StrokeThickness="1.5" StrokeStartLineCap="Round"
+                                                              StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                              Width="8" Height="10" Stretch="Uniform">
+                                                            <Path.Style>
+                                                                <Style TargetType="Path">
+                                                                    <Setter Property="RenderTransform">
+                                                                        <Setter.Value><RotateTransform Angle="0" CenterX="4" CenterY="5"/></Setter.Value>
+                                                                    </Setter>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsExpanded, ElementName=GroupExpander}" Value="True">
+                                                                            <Setter Property="RenderTransform">
+                                                                                <Setter.Value><RotateTransform Angle="90" CenterX="4" CenterY="5"/></Setter.Value>
+                                                                            </Setter>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Path.Style>
+                                                        </Path>
+                                                    </Border>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <Border Grid.Column="2" Background="{StaticResource SurfaceBgBrush}"
+                                                            CornerRadius="3" Padding="4,1" Margin="6,0,0,0">
+                                                        <TextBlock Text="{Binding ItemCount}" FontSize="9"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                    </Border>
+                                                </Grid>
+                                            </Expander.Header>
+                                            <ItemsPresenter Margin="12,0,0,0"/>
+                                        </Expander>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </GroupStyle.ContainerStyle>
+                </GroupStyle>
+            </ListBox.GroupStyle>
             <ListBox.ItemTemplate>
                 <DataTemplate DataType="{x:Type vm:DatasetImageEntry}">
                     <Grid Margin="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
@@ -151,6 +272,9 @@
                                        Foreground="{StaticResource AccentGreenBrush}"
                                        VerticalAlignment="Center"/>
                         </Border>
+                        <TextBlock Grid.Column="2" Text="{Binding WorkflowStatus}" FontSize="8"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="4,0,0,0"
+                                   VerticalAlignment="Center"/>
                     </Grid>
                 </DataTemplate>
             </ListBox.ItemTemplate>

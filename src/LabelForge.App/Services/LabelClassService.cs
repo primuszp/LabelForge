@@ -49,6 +49,14 @@ public sealed class LabelClassService
         return label;
     }
 
+    public void ReplaceWith(IEnumerable<string> names)
+    {
+        Classes.Clear();
+        ActiveClass = null;
+        foreach (var name in names.Distinct(StringComparer.OrdinalIgnoreCase)) Add(name);
+        EnsureDefaults();
+    }
+
     public void Remove(LabelClass label)
     {
         Classes.Remove(label);

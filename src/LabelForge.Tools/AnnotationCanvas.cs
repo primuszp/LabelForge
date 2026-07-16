@@ -188,6 +188,23 @@ public sealed class AnnotationCanvas : Canvas
         InvalidateVisual();
     }
 
+    public void PasteAnnotations(IEnumerable<Annotation> annotations)
+    {
+        if (Document is null) return;
+        var pasted = annotations.ToList();
+        if (pasted.Count == 0) return;
+        SaveUndoState();
+        foreach (var annotation in Document.Annotations) annotation.IsSelected = false;
+        foreach (var annotation in pasted)
+        {
+            annotation.IsSelected = true;
+            Document.Annotations.Add(annotation);
+        }
+        Document.IsDirty = true;
+        InvalidateVisual();
+        SelectionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void UnselectAll()
     {
         if (Document is null)

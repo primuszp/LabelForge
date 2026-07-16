@@ -13,13 +13,16 @@ public static class AutoLabelSettings
     // ── YOLO model paths ──────────────────────────────────────────────────
     public static string DetectionModelPath    { get; set; } = string.Empty;
     public static string SegmentationModelPath { get; set; } = string.Empty;
+    public static string SegmentationProvider { get; set; } = "YOLO";
+    public static string Sam3ModelDirectory { get; set; } = @"D:\Projects\SAM3\onnx_export";
+    public static string Sam3Prompts { get; set; } = "car,truck,person";
 
     // ── Shared inference parameters ───────────────────────────────────────
     public static float  Confidence  { get; set; } = 0.50f;
     public static float  Nms         { get; set; } = 0.30f;
     public static int    MaxDet      { get; set; } = 0;
     public static float  SegmentationMaskThreshold { get; set; } = 0.50f;
-    public static double SegmentationPolygonEpsilon { get; set; } = 2.0;
+    public static double SegmentationPolygonEpsilon { get; set; } = 0.20;
     public static bool   CurrentOnly { get; set; } = true;
     private static readonly string[] CocoClassNames =
     [
@@ -38,7 +41,9 @@ public static class AutoLabelSettings
 
     // ── Convenience ───────────────────────────────────────────────────────
     public static bool DetectionReady    => File.Exists(DetectionModelPath);
-    public static bool SegmentationReady => File.Exists(SegmentationModelPath);
+    public static bool SegmentationReady => SegmentationProvider == "SAM3"
+        ? Directory.Exists(Sam3ModelDirectory) && !string.IsNullOrWhiteSpace(Sam3Prompts)
+        : File.Exists(SegmentationModelPath);
 
     public static IReadOnlyList<string> ClassNameList =>
         ClassNames
@@ -64,6 +69,9 @@ public static class AutoLabelSettings
         SegmentationPolygonEpsilon = dto.SegmentationPolygonEpsilon;
         CurrentOnly = dto.CurrentOnly;
         ClassNames = string.IsNullOrWhiteSpace(dto.ClassNames) ? ClassNames : dto.ClassNames;
+        SegmentationProvider = dto.SegmentationProvider ?? "YOLO";
+        Sam3ModelDirectory = dto.Sam3ModelDirectory ?? Sam3ModelDirectory;
+        Sam3Prompts = dto.Sam3Prompts ?? Sam3Prompts;
     }
 
     public static async Task SaveAsync(CancellationToken cancellationToken = default)
@@ -80,6 +88,9 @@ public static class AutoLabelSettings
             SegmentationPolygonEpsilon = SegmentationPolygonEpsilon,
             CurrentOnly = CurrentOnly,
             ClassNames = ClassNames
+            ,SegmentationProvider = SegmentationProvider
+            ,Sam3ModelDirectory = Sam3ModelDirectory
+            ,Sam3Prompts = Sam3Prompts
         };
 
         await using var stream = File.Create(SettingsFilePath);
@@ -106,8 +117,11 @@ public static class AutoLabelSettings
         public float Nms { get; set; } = 0.30f;
         public int MaxDet { get; set; }
         public float SegmentationMaskThreshold { get; set; } = 0.50f;
-        public double SegmentationPolygonEpsilon { get; set; } = 2.0;
+        public double SegmentationPolygonEpsilon { get; set; } = 0.20;
         public bool CurrentOnly { get; set; } = true;
         public string? ClassNames { get; set; }
+        public string? SegmentationProvider { get; set; }
+        public string? Sam3ModelDirectory { get; set; }
+        public string? Sam3Prompts { get; set; }
     }
 }

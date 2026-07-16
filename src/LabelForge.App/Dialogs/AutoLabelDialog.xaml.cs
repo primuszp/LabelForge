@@ -48,6 +48,9 @@ public partial class AutoLabelDialog : Window
         MaskThresholdSlider.Value = AutoLabelSettings.SegmentationMaskThreshold;
         PolygonEpsilonSlider.Value = AutoLabelSettings.SegmentationPolygonEpsilon;
         ClassNamesBox.Text      = AutoLabelSettings.ClassNames;
+        Sam3EndpointBox.Text = AutoLabelSettings.Sam3ModelDirectory;
+        Sam3PromptsBox.Text = AutoLabelSettings.Sam3Prompts;
+        SegmentationProviderBox.SelectedIndex = AutoLabelSettings.SegmentationProvider == "SAM3" ? 1 : 0;
         CurrentImageRadio.IsChecked = AutoLabelSettings.CurrentOnly;
         AllImagesRadio.IsChecked    = !AutoLabelSettings.CurrentOnly;
         DetectionRadio.IsChecked    = isDet;
@@ -168,7 +171,64 @@ public partial class AutoLabelDialog : Window
             DetectionRadio.IsChecked = info.Kind == YoloKind.Detection;
             SegmentationRadio.IsChecked = info.Kind == YoloKind.Segmentation;
             StatusLabel.Text = info.Message;
+            var embeddedNames = YoloModelInspector.TryReadClassNames(dlg.FileName);
+            if (embeddedNames.Count > 0)
+            {
+                ClassNamesBox.Text = string.Join(Environment.NewLine, embeddedNames);
+                StatusLabel.Text += $" {embeddedNames.Count} osztalynev beolvasva.";
+            }
         }
+    }
+
+    private void SegmentationProviderOnChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (Sam3SettingsPanel is null) return;
+        Sam3SettingsPanel.Visibility = SegmentationProviderBox.SelectedIndex == 1
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void SaveSettingsOnClick(object sender, RoutedEventArgs e)
+    {
+        var modelPath = ModelPathBox.Text.Trim();
+        var isDetection = DetectionRadio.IsChecked == true;
+        var provider = SegmentationProviderBox.SelectedIndex == 1 ? "SAM3" : "YOLO";
+        if ((isDetection || provider == "YOLO") && !File.Exists(modelPath))
+        {
+            MessageBox.Show(this, "Valassz ervenyes ONNX modellfajlt.", "LabelForge",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (!isDetection && provider == "SAM3" &&
+            (string.IsNullOrWhiteSpace(Sam3EndpointBox.Text) || string.IsNullOrWhiteSpace(Sam3PromptsBox.Text)))
+        {
+            MessageBox.Show(this, "A SAM3 modellkonyvtar es legalabb egy prompt megadasa kotelezo.", "LabelForge",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (!isDetection && provider == "SAM3")
+        {
+            try { Sam3OnnxSegmentor.RequireFiles(Sam3EndpointBox.Text.Trim()); }
+            catch (Exception exception)
+            {
+                MessageBox.Show(this, exception.Message, "Hianyos SAM3 modell", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+        }
+
+        if (isDetection) AutoLabelSettings.DetectionModelPath = modelPath;
+        else if (provider == "YOLO") AutoLabelSettings.SegmentationModelPath = modelPath;
+        AutoLabelSettings.SegmentationProvider = provider;
+        AutoLabelSettings.Sam3ModelDirectory = Sam3EndpointBox.Text.Trim();
+        AutoLabelSettings.Sam3Prompts = Sam3PromptsBox.Text.Trim();
+        AutoLabelSettings.Confidence = (float)ConfSlider.Value;
+        AutoLabelSettings.Nms = (float)NmsSlider.Value;
+        AutoLabelSettings.MaxDet = (int)MaxDetSlider.Value;
+        AutoLabelSettings.SegmentationMaskThreshold = (float)MaskThresholdSlider.Value;
+        AutoLabelSettings.SegmentationPolygonEpsilon = PolygonEpsilonSlider.Value;
+        AutoLabelSettings.ClassNames = ClassNamesBox.Text;
+        await AutoLabelSettings.SaveAsync();
+        DialogResult = true;
+        Close();
     }
 
     // ── Futtatás ──────────────────────────────────────────────────────────

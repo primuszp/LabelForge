@@ -67,6 +67,9 @@
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="2"/>
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
+        <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+        <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True"/>
+        <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
         <Setter Property="ItemContainerStyle" Value="{DynamicResource ListBoxItemStyle}"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -76,6 +79,7 @@
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="4">
                         <ScrollViewer Padding="{TemplateBinding Padding}"
+                                      CanContentScroll="{TemplateBinding ScrollViewer.CanContentScroll}"
                                       Focusable="False">
                             <ItemsPresenter/>
                         </ScrollViewer>

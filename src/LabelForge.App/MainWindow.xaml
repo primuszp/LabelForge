@@ -17,7 +17,13 @@
         <KeyBinding Key="Z" Modifiers="Control" Command="{Binding UndoCommand}"/>
         <KeyBinding Key="Y" Modifiers="Control" Command="{Binding RedoCommand}"/>
         <KeyBinding Key="A" Modifiers="Control" Command="{Binding SelectAllCommand}"/>
+        <KeyBinding Key="C" Modifiers="Control" Command="{Binding CopyAnnotationsCommand}"/>
+        <KeyBinding Key="V" Modifiers="Control" Command="{Binding PasteAnnotationsCommand}"/>
         <KeyBinding Key="Delete" Command="{Binding DeleteSelectedCommand}"/>
+        <KeyBinding Key="D1" Modifiers="Alt" Command="{Binding PendingStatusCommand}"/>
+        <KeyBinding Key="D2" Modifiers="Alt" Command="{Binding ReviewedStatusCommand}"/>
+        <KeyBinding Key="D3" Modifiers="Alt" Command="{Binding ApprovedStatusCommand}"/>
+        <KeyBinding Key="D4" Modifiers="Alt" Command="{Binding RejectedStatusCommand}"/>
     </Window.InputBindings>
 
     <DockPanel>
@@ -48,7 +54,8 @@
                 <Separator/>
                 <MenuItem Header="{DynamicResource Action.OpenImage}" InputGestureText="Ctrl+O" Click="OpenImageOnClick"/>
                 <MenuItem Header="{DynamicResource Action.OpenFolder}" InputGestureText="Ctrl+Shift+O" Click="OpenFolderOnClick"/>
-                <MenuItem Header="{DynamicResource Action.OpenJson}" Click="OpenJsonOnClick"/>
+                <MenuItem Header="Dataset megnyitása..." Click="OpenDatasetOnClick"/>
+                <MenuItem Header="Import..." Click="ImportOnClick"/>
                 <Separator/>
                 <MenuItem Header="{DynamicResource Action.Save}" InputGestureText="Ctrl+S" Click="SaveOnClick"/>
                 <MenuItem Header="{DynamicResource Action.SaveAs}" InputGestureText="Ctrl+Shift+S" Click="SaveAsOnClick"/>
@@ -60,6 +67,8 @@
                 <MenuItem Header="{DynamicResource Action.Redo}" InputGestureText="Ctrl+Y" Click="RedoOnClick"/>
                 <Separator/>
                 <MenuItem Header="{DynamicResource Action.SelectAll}" InputGestureText="Ctrl+A" Click="SelectAllOnClick"/>
+                <MenuItem Header="Annotaciok masolasa" InputGestureText="Ctrl+C" Click="CopyAnnotationsOnClick"/>
+                <MenuItem Header="Annotaciok beillesztese" InputGestureText="Ctrl+V" Click="PasteAnnotationsOnClick"/>
                 <MenuItem Header="{DynamicResource Action.DeleteSelected}" InputGestureText="Del" Click="DeleteSelectedOnClick"/>
                 <MenuItem Header="{DynamicResource Action.DeleteAll}" Click="DeleteAllOnClick"/>
             </MenuItem>
@@ -79,7 +88,8 @@
                 <MenuItem Header="{DynamicResource Tool.FreehandPolygon}" InputGestureText="B" Click="ToolFreehandOnClick"/>
                 <MenuItem Header="{DynamicResource Tool.Polyline}" InputGestureText="L" Click="ToolPolylineOnClick"/>
                 <MenuItem Header="{DynamicResource Tool.Point}" InputGestureText="O" Click="ToolPointOnClick"/>
-                <MenuItem Header="AI Auto-Label (YOLO)…" Click="AutoLabelOnClick"/>
+                <MenuItem Header="AI modellek es SAM3 beallitasok..." Click="AutoLabelOnClick"/>
+                <MenuItem Header="AI cimke-megfeleltetes..." Click="LabelMappingOnClick"/>
                 <MenuItem Header="Javaslatok elfogadása mind" Click="AcceptAllSuggestionsOnClick"/>
                 <MenuItem Header="Javaslatok törlése" Click="RejectAllSuggestionsOnClick"/>
             </MenuItem>
@@ -466,6 +476,12 @@
                         </TabItem>
                         <TabItem Header="Kép info">
                             <controls:ImageMetadataPanel x:Name="ImageMetadataPanel"/>
+                        </TabItem>
+                        <TabItem Header="Review">
+                            <controls:ReviewPanel x:Name="ReviewPanel"/>
+                        </TabItem>
+                        <TabItem Header="AI feladatok">
+                            <controls:AiJobsPanel x:Name="AiJobsPanel"/>
                         </TabItem>
                     </TabControl>
                 </Grid>
