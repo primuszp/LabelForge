@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace LabelForge.App.AI;
 
@@ -72,6 +73,8 @@ public static class AutoLabelSettings
         SegmentationProvider = dto.SegmentationProvider ?? "YOLO";
         Sam3ModelDirectory = dto.Sam3ModelDirectory ?? Sam3ModelDirectory;
         Sam3Prompts = dto.Sam3Prompts ?? Sam3Prompts;
+        RepairYoloModelAssignments();
+        RepairPresetClassNames();
     }
 
     public static async Task SaveAsync(CancellationToken cancellationToken = default)
@@ -95,6 +98,32 @@ public static class AutoLabelSettings
 
         await using var stream = File.Create(SettingsFilePath);
         await JsonSerializer.SerializeAsync(stream, dto, JsonOptions, cancellationToken);
+    }
+
+    private static void RepairYoloModelAssignments()
+    {
+        if (!File.Exists(SegmentationModelPath)) return;
+        var info = YoloModelInspector.Inspect(SegmentationModelPath);
+        if (!info.IsCompatible || info.Kind == YoloKind.Segmentation) return;
+        var directory = Path.GetDirectoryName(SegmentationModelPath) ?? string.Empty;
+        var baseName = Path.GetFileNameWithoutExtension(SegmentationModelPath);
+        var candidates = new[]
+        {
+            Path.Combine(directory, baseName + "-seg.onnx"),
+            Path.Combine(directory, baseName + "_seg.onnx")
+        };
+        var replacement = candidates.FirstOrDefault(path => File.Exists(path)
+            && YoloModelInspector.Inspect(path) is { IsCompatible: true, Kind: YoloKind.Segmentation });
+        if (replacement is not null) SegmentationModelPath = replacement;
+    }
+
+    private static void RepairPresetClassNames()
+    {
+        var names = new[] { DetectionModelPath, SegmentationModelPath }.Where(File.Exists)
+            .Select(Path.GetFileName).Where(name => name is not null).Cast<string>();
+        var isCocoPreset = names.Any(name => Regex.IsMatch(name, @"^yolo(?:8|11)[nslmx](?:-seg)?\.onnx$", RegexOptions.IgnoreCase));
+        if (isCocoPreset && ClassNameList.Count < CocoClassNames.Length)
+            ClassNames = string.Join('\n', CocoClassNames);
     }
 
     private static string SettingsFolder =>

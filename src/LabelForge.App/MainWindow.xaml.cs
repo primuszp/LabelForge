@@ -603,11 +603,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         LabelForge.App.AI.AutoLabelSettings.Nms,
                         LabelForge.App.AI.AutoLabelSettings.MaxDet);
                 });
-                foreach (var r in results)
+                var profile = MappingProfile(model);
+                var unmapped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                bool AddDetection(LabelForge.App.AI.DetectionResult r)
                 {
                     var sourceLabel = r.ClassId < classes.Count ? classes[r.ClassId] : $"class_{r.ClassId}";
-                    var projectLabel = labelMappingService.Resolve(MappingProfile(model), sourceLabel);
-                    if (projectLabel is null) continue;
+                    var projectLabel = labelMappingService.Resolve(profile, sourceLabel);
+                    if (projectLabel is null) { unmapped.Add(sourceLabel); return false; }
                     var annotation = new Annotation
                     {
                         Label = projectLabel,
@@ -620,9 +622,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         Shape      = new RectangleShape { X = r.X, Y = r.Y, Width = r.Width, Height = r.Height }
                     };
                     annotation.Attributes["ai.source_label"] = sourceLabel;
-                    annotation.Attributes["ai.mapping_profile"] = MappingProfile(model);
+                    annotation.Attributes["ai.mapping_profile"] = profile;
                     Document.Annotations.Add(annotation);
+                    return true;
                 }
+                var added = results.Count(AddDetection);
+                if (added == 0 && unmapped.Count > 0 && EditMappings(profile, unmapped))
+                    added = results.Count(AddDetection);
+                ShowAiResultIfEmpty(results.Count, added, unmapped.Count);
             }
             else
             {
@@ -646,12 +653,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                         LabelForge.App.AI.AutoLabelSettings.SegmentationMaskThreshold,
                         LabelForge.App.AI.AutoLabelSettings.SegmentationPolygonEpsilon);
                 });
-                foreach (var r in results)
+                var mappingProfile = useSam3 ? "sam3" : MappingProfile(model);
+                var unmapped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                bool AddSegmentation(LabelForge.App.AI.SegmentationResult r)
                 {
                     var sourceLabel = r.ClassId < segmentClasses.Length ? segmentClasses[r.ClassId] : $"class_{r.ClassId}";
-                    var mappingProfile = useSam3 ? "sam3" : MappingProfile(model);
                     var projectLabel = labelMappingService.Resolve(mappingProfile, sourceLabel);
-                    if (projectLabel is null) continue;
+                    if (projectLabel is null) { unmapped.Add(sourceLabel); return false; }
                     LabelForge.Core.AnnotationShape shape;
                     if (r.Polygon.Count >= 3)
                     {
@@ -679,7 +687,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     annotation.Attributes["ai.source_label"] = sourceLabel;
                     annotation.Attributes["ai.mapping_profile"] = mappingProfile;
                     Document.Annotations.Add(annotation);
+                    return true;
                 }
+                var added = results.Count(AddSegmentation);
+                if (added == 0 && unmapped.Count > 0 && EditMappings(mappingProfile, unmapped))
+                    added = results.Count(AddSegmentation);
+                ShowAiResultIfEmpty(results.Count, added, unmapped.Count);
             }
 
             Document.WorkflowStatus = AnnotationWorkflowStatus.AiGenerated;
@@ -687,6 +700,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Document.IsDirty = true;
             AnnotationCanvas.InvalidateVisual();
             AnnotationInspector.Refresh();
+            StatusBar.SetAnnotationCount(Document.Annotations.Count);
         }
         catch (Exception ex)
         {
@@ -708,6 +722,22 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         sam3Segmentor = new LabelForge.App.AI.Sam3OnnxSegmentor(directory);
         sam3ModelDirectory = directory;
         return sam3Segmentor;
+    }
+
+    private bool EditMappings(string profile, IEnumerable<string> sourceLabels)
+    {
+        var sources = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
+        { [profile] = sourceLabels.OrderBy(label => label).ToArray() };
+        return new LabelMappingDialog(labelMappingService, sources, this).ShowDialog() == true;
+    }
+
+    private void ShowAiResultIfEmpty(int resultCount, int addedCount, int unmappedCount)
+    {
+        if (addedCount > 0) return;
+        var message = resultCount == 0
+            ? "A modell lefutott, de a jelenlegi kuszobokkel nem talalt objektumot."
+            : $"A modell {resultCount} objektumot talalt, de {unmappedCount} cimke nincs projektcimkehez rendelve.";
+        MessageBox.Show(this, message, "AI eredmeny", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private string ProjectLabelColor(string label) => labelService.Classes

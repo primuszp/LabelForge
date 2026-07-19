@@ -56,6 +56,18 @@ public partial class AutoLabelDialog : Window
         DetectionRadio.IsChecked    = isDet;
         SegmentationRadio.IsChecked = !isDet;
         RefreshDownloadedModels();
+        if (preselect == false)
+        {
+            DetectionRadio.IsChecked = false;
+            SegmentationRadio.IsChecked = true;
+            var segmentationModel = modelLibrary.GetDownloadedModels().FirstOrDefault(model => model.Kind == YoloKind.Segmentation);
+            if (segmentationModel is not null &&
+                (!File.Exists(ModelPathBox.Text) || YoloModelInspector.Inspect(ModelPathBox.Text).Kind != YoloKind.Segmentation))
+            {
+                ModelPathBox.Text = segmentationModel.FilePath;
+                DownloadedModelCombo.SelectedItem = segmentationModel;
+            }
+        }
     }
 
     private void RefreshDownloadedModels()
@@ -211,6 +223,16 @@ public partial class AutoLabelDialog : Window
             catch (Exception exception)
             {
                 MessageBox.Show(this, exception.Message, "Hianyos SAM3 modell", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+        }
+        if (isDetection || provider == "YOLO")
+        {
+            try { YoloModelInspector.Require(modelPath, isDetection ? YoloKind.Detection : YoloKind.Segmentation); }
+            catch (Exception exception)
+            {
+                MessageBox.Show(this, exception.Message, "Nem megfelelo YOLO modell",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
         }

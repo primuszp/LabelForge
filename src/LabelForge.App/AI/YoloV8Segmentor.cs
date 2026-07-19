@@ -173,6 +173,7 @@ public sealed class YoloV8Segmentor : IDisposable
         var protoScaleY = (float)YoloHelper.InputSize / protoH;
 
         var mask = new bool[protoH, protoW];
+        var logits = new float[protoH, protoW];
 
         for (int py = 0; py < protoH; py++)
         for (int px = 0; px < protoW; px++)
@@ -180,8 +181,19 @@ public sealed class YoloV8Segmentor : IDisposable
             float sum = 0;
             for (int k = 0; k < coeff.Length; k++)
                 sum += coeff[k] * protos[0, k, py, px];
+            logits[py, px] = sum;
             mask[py, px] = YoloHelper.Sigmoid(sum) > maskThreshold;
         }
+
+        var thresholdLogit = MathF.Log(maskThreshold / Math.Max(0.0001f, 1 - maskThreshold));
+        var smoothPolygon = Sam3OnnxSegmentor.LogitsToPolygon(protoW, protoH, (px, py) => logits[py, px],
+            thresholdLogit, YoloHelper.InputSize, YoloHelper.InputSize, Math.Min(0.75, polygonEpsilon));
+        if (smoothPolygon.Count >= 3)
+            return smoothPolygon.Select(point => new Point2D(
+                    Math.Clamp((point.X - padX) / scale, x1, x2),
+                    Math.Clamp((point.Y - padY) / scale, y1, y2)))
+                .Distinct()
+                .ToArray();
 
         // Convert prototype pixel → original image coordinate
         // proto pixel (px,py) → letterbox pixel (px*4, py*4) → image ((lx-padX)/scale, (ly-padY)/scale)

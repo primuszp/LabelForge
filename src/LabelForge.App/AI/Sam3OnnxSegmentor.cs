@@ -117,8 +117,12 @@ public sealed class Sam3OnnxSegmentor : IDisposable
     }
 
     private static IReadOnlyList<Point2D> MaskToPolygon(Tensor<float> masks, int query, int width, int height, double epsilon)
+        => LogitsToPolygon(masks.Dimensions[3], masks.Dimensions[2],
+            (x, y) => masks[0, query, y, x], 0, width, height, epsilon);
+
+    internal static IReadOnlyList<Point2D> LogitsToPolygon(int sourceW, int sourceH,
+        Func<int, int, float> sample, float threshold, int width, int height, double epsilon)
     {
-        var sourceH = masks.Dimensions[2]; var sourceW = masks.Dimensions[3];
         const int contourResolution = 2048;
         var scale = Math.Min(1d, contourResolution / (double)Math.Max(width, height));
         var w = Math.Max(sourceW, (int)Math.Round(width * scale));
@@ -131,9 +135,9 @@ public sealed class Sam3OnnxSegmentor : IDisposable
             var y0 = Math.Clamp((int)Math.Floor(sy), 0, sourceH - 1); var y1 = Math.Min(y0 + 1, sourceH - 1);
             var x0 = Math.Clamp((int)Math.Floor(sx), 0, sourceW - 1); var x1 = Math.Min(x0 + 1, sourceW - 1);
             var fy = Math.Clamp(sy - y0, 0, 1); var fx = Math.Clamp(sx - x0, 0, 1);
-            var top = masks[0, query, y0, x0] * (1 - fx) + masks[0, query, y0, x1] * fx;
-            var bottom = masks[0, query, y1, x0] * (1 - fx) + masks[0, query, y1, x1] * fx;
-            foreground[y, x] = top * (1 - fy) + bottom * fy > 0;
+            var top = sample(x0, y0) * (1 - fx) + sample(x1, y0) * fx;
+            var bottom = sample(x0, y1) * (1 - fx) + sample(x1, y1) * fx;
+            foreground[y, x] = top * (1 - fy) + bottom * fy > threshold;
         }
         var edges = new Dictionary<(int X, int Y), List<(int X, int Y)>>();
         void Add((int X, int Y) from, (int X, int Y) to)
